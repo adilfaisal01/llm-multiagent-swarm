@@ -129,14 +129,60 @@ Loss dropped from **1.32 → 0.03** in 100 steps. No NaN this time — batch-lev
 
 ---
 
+## Run 4 — EMA + Variance Weight 1.0 (June 30, 2026)
+
+**Config:**
+- Same as Run 3, except:
+- Variance weight: **1.0** (100× stronger, from 0.01)
+- Steps: 50 (killed early — zombie Run 3 process was competing for CPU)
+
+**Training:**
+
+| Step | Total Loss | Cosine Loss | Var Loss | Grad Norm |
+|------|-----------|------------|---------|-----------|
+| 0 | 1.5771 | 0.9843 | 0.5928 | 3.4372 |
+| 10 | 0.9140 | 0.3260 | 0.5880 | 1.9825 |
+| 20 | 0.4367 | 0.1910 | 0.2457 | 1.5831 |
+| 30 | 0.2370 | 0.2131 | 0.0239 | 1.4703 |
+| 40 | 0.3173 | 0.0679 | 0.2494 | 1.7299 |
+| 49 | 0.1834 | 0.1286 | 0.0547 | 1.2093 |
+
+The variance loss drops from 0.59 → 0.05, meaning the predictor is learning to satisfy the `F.relu(1.0 - std)` constraint. The model is oscillating between minimizing cosine loss and variance loss — they're in direct competition.
+
+**Representation Quality (final eval):**
+
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Variance | 0.0032 | >0.1 | ✗ Collapsed |
+| Effective rank | 7.24 / 1024 | >10 | ✗ Too low |
+| Collapse fraction | 0.0046 | <0.1 | ✓ Good |
+| Gini singular | 0.74 | <0.5 | ✗ Unequal |
+| Norm mean | 10.58 | — | Stable |
+| Center norm | 10.44 | — | Stable |
+
+**Key insight:** The variance loss is computed on the **predicted embeddings** (predictor output), but the evaluation metrics are on the **context embeddings** (encoder output). The predictor learned to spread out its predictions to satisfy the variance constraint, but the gradient doesn't propagate back to the encoder/projector effectively — the EMA target encoder smooths it out.
+
+The model found a clever workaround: make the predictor output spread out (satisfies the variance loss), but keep the context embeddings collapsed (minimizes the cosine loss). Best of both worlds for the loss function, worst of both worlds for representation quality.
+
+**Verdict:** Variance regularization on predicted embeddings alone is **insufficient** — the model can decouple predictor spread from encoder collapse. Need to either:
+1. Apply variance regularization to **context embeddings** too (not just predicted)
+2. Use **LeWorldModel-style Gaussian regularizer** on the latent space directly
+3. Use **full VICReg** (variance + covariance + invariance) on both encoder and predictor outputs
+
+---
+
 ## Key Findings
 
 1. **JEPA mechanics work** — the predictor can learn to map context → target embeddings in agent trajectory space
 2. **EMA alone is insufficient** for preventing representation collapse in this setting
 3. **Batch-level variance (0.01 weight) is also insufficient** — the cosine loss pressure dominates the weak variance penalty
-4. **Need stronger collapse prevention** — either higher variance weight (0.1-1.0), full VICReg (variance + covariance), or LeWorldModel-style Gaussian regularizer
-5. **Qwen2.5-0.5B** is a viable frozen encoder for CPU-based experiments (~35s/step)
-6. **AgentTrove** provides rich trajectory data with 12-16 turn conversations
+4. **Variance on predicted embeddings alone is insufficient even at weight 1.0** — the model decouples predictor spread from encoder collapse. The predictor learns to spread out (satisfying the variance loss) while keeping context embeddings collapsed (minimizing cosine loss). The EMA target encoder prevents gradients from propagating back effectively.
+5. **Need a fundamentally different approach** — either:
+   - Apply variance regularization to **context embeddings** too (not just predicted)
+   - **LeWorldModel-style Gaussian regularizer** on the latent space directly
+   - **Full VICReg** (variance + covariance + invariance) on both encoder and predictor outputs
+6. **Qwen2.5-0.5B** is a viable frozen encoder for CPU-based experiments (~35s/step)
+7. **AgentTrove** provides rich trajectory data with 12-16 turn conversations
 
 ---
 
