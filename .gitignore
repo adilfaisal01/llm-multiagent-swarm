@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+llm-jepa/venv/
+
+# Data & model checkpoints
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Plots (generated)
+llm-jepa-plots/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
