@@ -80,6 +80,29 @@ python3 -m swarm --goal "Your question" --mix --json
 bash chaos_monkey.sh   # 15 chaos monkey tests
 ```
 
+## Auto-Testing on Commit
+
+A **post-commit git hook** runs chaos monkey + benchmark automatically after every commit:
+
+- Results saved to `test-results/<commit-hash>/`
+- Files: `chaos_monkey.txt`, `benchmark.txt`, `run.log`
+- `test-results/` is gitignored (not committed)
+- Stray `swarm_*.md` output files are cleaned up after each run
+
+### Install hooks
+
+```bash
+bash setup-hooks.sh
+```
+
+This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning.
+
+### Manual run
+
+```bash
+bash .githooks/post-commit   # re-run tests for the latest commit
+```
+
 ## Common Pitfalls
 
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers

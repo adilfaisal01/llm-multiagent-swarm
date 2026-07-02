@@ -235,6 +235,29 @@ Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK
 | Sequential | 150.4s | 264.0s |
 | Parallel | 45.6s (3.3×) | 77.3s (3.4×) |
 
+## Auto-Testing on Commit
+
+A **post-commit git hook** runs chaos monkey + benchmark automatically after every commit:
+
+- Results saved to `test-results/<commit-hash>/`
+- Files: `chaos_monkey.txt`, `benchmark.txt`, `run.log`
+- `test-results/` is gitignored (not committed)
+- Stray `swarm_*.md` output files are cleaned up after each run
+
+### Install hooks
+
+```bash
+bash setup-hooks.sh
+```
+
+This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning.
+
+### Manual run
+
+```bash
+bash .githooks/post-commit   # re-run tests for the latest commit
+```
+
 ## Requirements
 
 - Python 3.8+ (stdlib only — no pip install needed)
@@ -245,16 +268,18 @@ Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK
 ## Files
 
 ```
-├── swarm/                 # Modular package (new)
-│   ├── __init__.py        # Package exports
-│   ├── __main__.py        # CLI entry point
+├── swarm/                 # Modular package
+│   ├── __init__.py        # Public API: from swarm import run_swarm
+│   ├── __main__.py        # CLI entry point (thin wrapper)
+│   ├── runner.py          # Library entry point: run_swarm()
+│   ├── orchestrator.py    # Spawns workers, manages scratchpad
+│   ├── worker.py          # Worker agent loop
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
 │   ├── tools.py           # Tool definitions + execute_tool()
-│   ├── worker.py          # Worker agent loop
-│   ├── orchestrator.py    # Spawns workers, manages scratchpad
 │   ├── config.py          # Config loader + defaults
-│   └── complexity.py      # Model-based complexity estimation
+│   ├── complexity.py      # Model-based complexity estimation
+│   └── output.py          # Output formatting + markdown saving
 ├── swarm2.py              # Legacy monolith (preserved)
 ├── swarm_config.json       # Configurable team, models, prompts
 ├── swarm.py               # Minimal version (no web search)
@@ -262,5 +287,10 @@ Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK
 ├── BENCHMARK.md            # Benchmark results
 ├── benchmark.py            # Benchmark script
 ├── CHAOS_MONKEY_RESULTS.md # Chaos monkey test results
+├── AGENTS.md               # AI agent context file
+├── chaos_monkey.sh         # 15 chaos monkey tests
+├── setup-hooks.sh          # Git hook installer
+├── .githooks/              # Git hooks directory
+│   └── post-commit        # Auto-runs tests on every commit
 └── README.md               # This file
 ```
