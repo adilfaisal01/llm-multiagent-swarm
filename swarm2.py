@@ -23,6 +23,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import sqlite3
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 OLLAMA_RAW = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
@@ -32,6 +34,99 @@ SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
 SEARCH_TIMEOUT = int(os.environ.get("SEARCH_TIMEOUT", "15"))
 CONFIG_PATH = os.environ.get("SWARM_CONFIG", "swarm_config.json")
+
+
+# ─── Config loader ───────────────────────────────────────────────────────────
+
+def load_swarm_config(path: str = CONFIG_PATH) -> dict:
+    """Load swarm configuration from JSON file."""
+    if not os.path.exists(path):
+        print(f"  [INFO] Config not found at {path}, using defaults", file=sys.stderr)
+        return {}
+
+    with open(path) as f:
+        try:
+            cfg = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"  [ERROR] Malformed config file {path}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+
+# ─── Scratchpad (write-only RAM DB for raw findings) ────────────────────────
+
+class Scratchpad:
+    """Temporary SQLite database in RAM for agents to dump raw findings.
+    
+    Agents WRITE only — they never read from it. The orchestrator reads
+    after all agents finish to synthesize across all sources.
+    """
+    
+    def __init__(self):
+        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        self._conn.execute("""
+            CREATE TABLE findings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker TEXT NOT NULL,
+                source_url TEXT,
+                finding TEXT NOT NULL,
+                category TEXT DEFAULT 'general',
+                confidence TEXT DEFAULT 'medium',
+                timestamp TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self._conn.execute("""
+            CREATE TABLE sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker TEXT NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                snippet TEXT DEFAULT '',
+                timestamp TEXT DEFAULT (datetime('now'))
+            )
+        """)
+    
+    def add_finding(self, worker: str, finding: str, source_url: str = "",
+                    category: str = "general", confidence: str = "medium"):
+        """Write a finding to the scratchpad. Agents call this, never read."""
+        self._conn.execute(
+            "INSERT INTO findings (worker, source_url, finding, category, confidence) VALUES (?, ?, ?, ?, ?)",
+            (worker, source_url, finding, category, confidence)
+        )
+        self._conn.commit()
+    
+    def add_source(self, worker: str, url: str, title: str = "", snippet: str = ""):
+        """Log a source URL the agent scraped."""
+        self._conn.execute(
+            "INSERT INTO sources (worker, url, title, snippet) VALUES (?, ?, ?, ?)",
+            (worker, url, title, snippet[:500])
+        )
+        self._conn.commit()
+    
+    def get_all_findings(self) -> list:
+        """Read all findings. Only the orchestrator calls this."""
+        return self._conn.execute(
+            "SELECT worker, source_url, finding, category, confidence FROM findings ORDER BY id"
+        ).fetchall()
+    
+    def get_all_sources(self) -> list:
+        """Read all sources collected. Only the orchestrator calls this."""
+        return self._conn.execute(
+            "SELECT worker, url, title FROM sources ORDER BY id"
+        ).fetchall()
+    
+    def get_summary(self) -> dict:
+        """Get a quick summary of what was collected."""
+        findings = self._conn.execute("SELECT COUNT(*), COUNT(DISTINCT worker) FROM findings").fetchone()
+        sources = self._conn.execute("SELECT COUNT(*), COUNT(DISTINCT url) FROM sources").fetchone()
+        return {
+            "total_findings": findings[0],
+            "workers_with_findings": findings[1],
+            "total_sources": sources[0],
+            "unique_urls": sources[1],
+        }
+    
+    def close(self):
+        self._conn.close()
 
 
 # ─── Config loader ───────────────────────────────────────────────────────────
@@ -120,13 +215,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the web for current information. Use this to find recent news, facts, and data.",
+            "description": "Search the web for current information",
             "parameters": {
                 "type": "object",
-                "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "description": "Web search query"}
+                    "query": {"type": "string", "description": "Search query"}
                 },
+                "required": ["query"],
             },
         },
     },
@@ -134,13 +229,30 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "web_extract",
-            "description": "Read the full content of a web page or article.",
+            "description": "Extract content from a URL",
             "parameters": {
                 "type": "object",
-                "required": ["url"],
                 "properties": {
-                    "url": {"type": "string", "description": "The URL to read"}
+                    "url": {"type": "string", "description": "URL to extract"}
                 },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "scratchpad_add",
+            "description": "Save a raw finding to the shared scratchpad (write-only, agents never read from it). Use this to log facts, quotes, numbers, and source URLs for the orchestrator to synthesize later.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "finding": {"type": "string", "description": "The raw finding, fact, quote, or number"},
+                    "source_url": {"type": "string", "description": "URL where this finding came from"},
+                    "category": {"type": "string", "description": "Category: 'timeline', 'money', 'players', 'impact', 'technical', 'controversy', or 'general'"},
+                    "confidence": {"type": "string", "description": "Confidence: 'high', 'medium', or 'low'"},
+                },
+                "required": ["finding"],
             },
         },
     },
@@ -231,7 +343,9 @@ SEARCH_BACKENDS = {
 
 # ─── Tool execution ─────────────────────────────────────────────────────────
 
-def execute_tool(tool_call: dict) -> str:
+_SCRATCHPAD = None  # Global ref set by orchestrate()
+
+def execute_tool(tool_call: dict, worker_name: str = "unknown") -> str:
     fn_name = tool_call.get("function", {}).get("name", "")
     args = tool_call.get("function", {}).get("arguments", {})
 
@@ -242,7 +356,20 @@ def execute_tool(tool_call: dict) -> str:
         backend = SEARCH_BACKENDS.get(SEARCH_BACKEND)
         if not backend:
             return f"[Search error: unknown backend '{SEARCH_BACKEND}']"
-        return backend(query)
+        result = backend(query)
+        # Auto-log search results to scratchpad
+        if _SCRATCHPAD:
+            _SCRATCHPAD.add_finding(worker_name, f"Search: {query}", "", "search", "high")
+            # Parse results for URLs and snippets
+            for line in result.split("\n"):
+                line = line.strip()
+                if line.startswith("- ") and "http" in line:
+                    parts = line.rsplit("  ", 1)
+                    if len(parts) == 2:
+                        url = parts[-1].strip()
+                        snippet = parts[0][2:].strip()
+                        _SCRATCHPAD.add_source(worker_name, url, snippet[:200], snippet[:200])
+        return result
 
     elif fn_name == "web_extract":
         url = args.get("url", "")
@@ -254,9 +381,24 @@ def execute_tool(tool_call: dict) -> str:
                 text = resp.read().decode("utf-8", errors="ignore")
                 clean = re.sub(r"<[^>]+>", " ", text)
                 clean = re.sub(r"\s+", " ", clean).strip()
-                return clean[:3000]
+                result = clean[:3000]
+            # Auto-log extracted content to scratchpad
+            if _SCRATCHPAD:
+                _SCRATCHPAD.add_source(worker_name, url, url, result[:200])
+                _SCRATCHPAD.add_finding(worker_name, f"Extracted: {url}", url, "extract", "medium")
+            return result
         except Exception as e:
             return f"[Extract error: {e}]"
+
+    elif fn_name == "scratchpad_add":
+        finding = args.get("finding", "")
+        source_url = args.get("source_url", "")
+        category = args.get("category", "general")
+        confidence = args.get("confidence", "medium")
+        if _SCRATCHPAD and finding:
+            _SCRATCHPAD.add_finding(worker_name, finding, source_url, category, confidence)
+            return f"[Scratchpad: saved finding ({category}, {confidence})]"
+        return "[Scratchpad: not available]"
 
     return f"Unknown tool: {fn_name}"
 
@@ -265,6 +407,9 @@ def execute_tool(tool_call: dict) -> str:
 
 def run_worker(task_id: int, goal: str, worker_name: str,
                model_name: str, angle: str, prompt_template: str = "") -> dict:
+    # Set worker name so scratchpad_add can identify the source
+    os.environ["SWARM_WORKER_NAME"] = worker_name
+    
     if prompt_template:
         system_prompt = prompt_template.replace("{goal}", goal).replace("{angle}", angle)
     else:
@@ -272,8 +417,16 @@ def run_worker(task_id: int, goal: str, worker_name: str,
             f"You are {worker_name}, a focused research agent.\n\n"
             f"MAIN QUESTION: {goal}\n\n"
             f"YOUR ANGLE: {angle}\n\n"
-            "You have web_search and web_extract tools. Search for current info, "
-            "then write your report. Be factual with names, dates, numbers."
+            "You have web_search, web_extract, and scratchpad_add tools.\n\n"
+            "WORKFLOW:\n"
+            "1. Use web_search to find current information on your angle.\n"
+            "2. For EACH search result, call scratchpad_add to log the raw facts, "
+            "quotes, numbers, and source URLs you find. This is how the orchestrator "
+            "collects all raw data across the team.\n"
+            "3. After collecting data, write your report.\n\n"
+            "IMPORTANT: You MUST call scratchpad_add for every significant finding. "
+            "Log the raw data first, then write your analysis. "
+            "Be factual with names, dates, and numbers."
         )
 
     start = time.time()
@@ -322,7 +475,7 @@ def run_worker(task_id: int, goal: str, worker_name: str,
             break
 
         for tc in tool_calls:
-            result_content = execute_tool(tc)
+            result_content = execute_tool(tc, worker_name)
             messages.append({
                 "role": "tool",
                 "tool_name": tc["function"]["name"],
@@ -413,6 +566,10 @@ def run_worker(task_id: int, goal: str, worker_name: str,
 def orchestrate(goal: str, num_workers: int = 5, model: str = None,
                 mix: bool = False, json_mode: bool = False,
                 top_angle: str = "") -> dict:
+    global _SCRATCHPAD
+    # Create the write-only scratchpad for raw findings
+    _SCRATCHPAD = Scratchpad()
+    
     # Build worker configs
     workers = []
     for i in range(num_workers):
@@ -464,12 +621,24 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
                   f"{len(r['response'])} chars", file=out)
 
     results.sort(key=lambda x: x["worker_id"])
+    
+    # Collect scratchpad summary
+    scratch_summary = _SCRATCHPAD.get_summary()
+    scratch_findings = _SCRATCHPAD.get_all_findings()
+    scratch_sources = _SCRATCHPAD.get_all_sources()
+    _SCRATCHPAD.close()
+    
     return {
         "goal": goal,
         "num_workers": num_workers,
         "models": models_used,
         "wall_time_s": round(sum(r["duration_s"] for r in results), 1),
         "workers": results,
+        "scratchpad": {
+            "summary": scratch_summary,
+            "findings": scratch_findings,
+            "sources": scratch_sources,
+        },
     }
 
 
@@ -548,6 +717,13 @@ def main():
         print(f"\n{'─'*55}")
         print(f"  Swarm done! I'll synthesize these into a unified take.")
         print(f"{'─'*55}")
+        
+        # Show scratchpad summary
+        sp = result.get("scratchpad", {}).get("summary", {})
+        if sp and sp.get("total_findings", 0) > 0:
+            print(f"\n  📋 Scratchpad: {sp['total_findings']} findings from {sp['workers_with_findings']} workers")
+            print(f"     {sp['total_sources']} sources ({sp['unique_urls']} unique URLs)")
+            print(f"{'─'*55}")
 
     # Auto-save full research to a markdown file
     safe_name = re.sub(r'[^a-zA-Z0-9]+', '_', args.goal.strip()[:60]).strip('_')
@@ -566,6 +742,26 @@ def main():
             f.write(f"**Duration:** {w['duration_s']}s | **Searches:** {w['search_rounds']} | **Chars:** {len(w['response'])}\n\n")
             f.write(f"{w['response']}\n\n")
             f.write("---\n\n")
+        
+        # Add scratchpad findings
+        sp = result.get("scratchpad", {})
+        if sp.get("findings"):
+            f.write("## 📋 Scratchpad Findings\n\n")
+            f.write("| Worker | Category | Finding | Source |\n")
+            f.write("|--------|----------|---------|--------|\n")
+            for row in sp["findings"]:
+                worker, src_url, finding, cat, conf = row
+                src_short = src_url[:60] if src_url else "-"
+                finding_short = finding[:100].replace("\n", " ")
+                f.write(f"| {worker} | {cat} | {finding_short} | {src_short} |\n")
+            f.write("\n")
+        
+        if sp.get("sources"):
+            f.write("## 🔗 Sources Collected\n\n")
+            for row in sp["sources"]:
+                worker, url, title = row
+                f.write(f"- [{title}]({url}) — {worker}\n")
+            f.write("\n")
     print(f"\n  💾 Saved to {filename}", file=out)
 
 
