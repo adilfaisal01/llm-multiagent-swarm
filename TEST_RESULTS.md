@@ -108,3 +108,37 @@
 - **Vera (gpt-oss:120b)** consistently produces the best historical timelines
 - No worker failed or returned empty content across all 5 tests
 - All 5 angles (origins, money, implications, controversies, technical) produced distinct, non-overlapping content
+
+---
+
+## Chaos Monkey Tests
+
+**Date:** July 1, 2026  
+**Purpose:** Edge cases, failure modes, and adversarial inputs
+
+| # | Test | Input | Result | Notes |
+|---|------|-------|--------|-------|
+| 1 | Empty goal | `--goal ""` | 🛡️ Guarded | `[ERROR] --goal cannot be empty` — exits with code 1 |
+| 2 | Missing --goal | no `--goal` | 🛡️ Guarded | argparse rejects: `error: the following arguments are required: --goal` |
+| 3 | Zero workers | `--workers 0` | ✅ Clamped to 1 | Vera ran with "test" goal, 27.1s, 9,407 chars |
+| 4 | Single worker | `--workers 1 --mix` | ✅ Works | Vera alone, 21.5s, 7,141 chars on "What is 2+2?" |
+| 5 | 20 workers (wrap) | `--workers 20 --mix` | ⚠️ Timed out | Clamped to 5, but 5 workers on a trivial goal still took >120s |
+| 6 | Non-existent config | `--config /tmp/nope.json` | ✅ Graceful | Falls back to defaults, prints `[INFO] Config not found` |
+| 7 | Malformed JSON config | `echo "{broken json" > /tmp/broken.json` | 🛡️ Guarded | `json.JSONDecodeError` caught, exits with error |
+| 8 | Invalid model | `--model totally-fake-model-9999` | ⚠️ Passes through | Ollama returns error, worker reports `[ERR]` |
+| 9 | Emoji + Unicode | `🔥💯🐒 What does 🎉 mean in Japanese culture? 日本語も話せますか？` | ✅ All 5 workers | 145.3s, all returned Japanese cultural analysis |
+| 10 | SQL injection | `'; DROP TABLE users; -- What is SQL injection?` | ✅ All 5 workers | 139.8s, all returned SQL injection explanations — no injection occurred |
+| 11 | 10,000 char goal | `'A' * 10000` | ✅ Graceful | Workers asked for clarification instead of crashing |
+| 12 | JSON output | `--json` piped to parser | ✅ Fixed | Clean JSON on stdout, human output on stderr |
+
+### Fixes Applied During Chaos Testing
+
+| Issue | Fix |
+|-------|-----|
+| Empty goal hangs workers | Added `if not args.goal.strip(): sys.exit(1)` guard |
+| JSON mode mixed human text into stdout | All human-readable output goes to `stderr` when `--json` is set; only clean JSON on `stdout` |
+| Malformed config crashes | `json.JSONDecodeError` caught in `load_swarm_config()` |
+
+### Verdict
+
+The swarm handles chaos gracefully. No crashes, no data corruption, no infinite loops. The two edge cases that needed hardening (empty goal, JSON output) were quick fixes. The 10K-char goal was handled elegantly — workers recognized it as nonsense and asked for clarification rather than hallucinating.

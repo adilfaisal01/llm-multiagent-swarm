@@ -43,7 +43,11 @@ def load_swarm_config(path: str = CONFIG_PATH) -> dict:
         return {}
 
     with open(path) as f:
-        cfg = json.load(f)
+        try:
+            cfg = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"  [ERROR] Malformed config file {path}: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Resolve model aliases to full tags
     models = cfg.get("models", {})
@@ -407,7 +411,7 @@ def run_worker(task_id: int, goal: str, worker_name: str,
 # ─── Orchestrator ───────────────────────────────────────────────────────────
 
 def orchestrate(goal: str, num_workers: int = 5, model: str = None,
-                mix: bool = False) -> dict:
+                mix: bool = False, json_mode: bool = False) -> dict:
     # Build worker configs
     workers = []
     for i in range(num_workers):
@@ -428,14 +432,15 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             })
 
     models_used = list(set(w["model"] for w in workers))
-    print(f"\n{'─'*55}")
-    print(f"  🐝 SWARM v2")
-    print(f"  Workers: {num_workers} | Models: {', '.join(models_used)}")
+    out = sys.stderr if json_mode else sys.stdout
+    print(f"\n{'─'*55}", file=out)
+    print(f"  🐝 SWARM v2", file=out)
+    print(f"  Workers: {num_workers} | Models: {', '.join(models_used)}", file=out)
     if mix:
         names = [f"{w['name']}({w['model'].split(':')[0]})" for w in workers]
-        print(f"  Team: {', '.join(names)}")
-    print(f"  Goal: {goal[:100]}")
-    print(f"{'─'*55}\n")
+        print(f"  Team: {', '.join(names)}", file=out)
+    print(f"  Goal: {goal[:100]}", file=out)
+    print(f"{'─'*55}\n", file=out)
 
     results = []
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
@@ -449,7 +454,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             ok = "OK" if r["status"] == "ok" else "ERR"
             print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
                   f"{r['duration_s']}s, {r['search_rounds']} searches — "
-                  f"{len(r['response'])} chars")
+                  f"{len(r['response'])} chars", file=out)
 
     results.sort(key=lambda x: x["worker_id"])
     return {
@@ -504,11 +509,16 @@ def main():
             ANGLES = CONFIG.get("angles", []) or ANGLES
             FALLBACK_MODELS = CONFIG.get("fallback_models", []) or FALLBACK_MODELS
 
-    result = orchestrate(args.goal, args.workers, model, args.mix)
+    if not args.goal.strip():
+        print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!")
+        sys.exit(1)
 
-    print(f"\n{'─'*55}")
-    print(f"  ALL WORKERS DONE — {result['wall_time_s']}s total")
-    print(f"{'─'*55}")
+    result = orchestrate(args.goal, args.workers, model, args.mix, args.json)
+
+    out = sys.stderr if args.json else sys.stdout
+    print(f"\n{'─'*55}", file=out)
+    print(f"  ALL WORKERS DONE — {result['wall_time_s']}s total", file=out)
+    print(f"{'─'*55}", file=out)
 
     if args.json:
         print(json.dumps(result, indent=2))
