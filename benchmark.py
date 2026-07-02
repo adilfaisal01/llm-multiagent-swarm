@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 OLLAMA_RAW = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_BASE = f"http://{OLLAMA_RAW}" if not OLLAMA_RAW.startswith("http") else OLLAMA_RAW
-SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "searxng")
+SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "ddgs")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
 SEARCH_TIMEOUT = int(os.environ.get("SEARCH_TIMEOUT", "15"))

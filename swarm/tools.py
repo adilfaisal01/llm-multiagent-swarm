@@ -74,7 +74,7 @@ def execute_tool(tool_call: dict, worker_name: str = "unknown") -> str:
         query = args.get("query", "")
         if not query:
             return "Error: no query provided"
-        backend = search.BACKENDS.get(os.environ.get("SEARCH_BACKEND", "searxng"))
+        backend = search.BACKENDS.get(os.environ.get("SEARCH_BACKEND", "ddgs"))
         if not backend:
             return f"[Search error: unknown backend]"
         result = backend(query)

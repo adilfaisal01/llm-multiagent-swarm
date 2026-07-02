@@ -48,7 +48,7 @@ save_markdown(result, result["goal"])
 
 ### Complexity estimation
 - Uses DeepSeek V4 Flash to read the query and rate it 1-5
-- Falls back to regex heuristic if the LLM call fails
+- Returns 3 (safe default) if the LLM call fails
 - `--auto` flag enables this
 
 ### Worker loop
@@ -57,8 +57,8 @@ save_markdown(result, result["goal"])
 - Each worker has its own `messages` list (thread-local)
 
 ### Search backends
-- `searxng` (default, self-hosted at localhost:8080)
-- `ddgs` (DuckDuckGo, no setup)
+- `ddgs` (default — DuckDuckGo, no setup, works out of the box)
+- `searxng` (self-hosted at localhost:8080, higher rate limits)
 - `google` (requires API key + CX)
 
 ## CLI Usage

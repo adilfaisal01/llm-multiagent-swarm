@@ -2,7 +2,7 @@
 
 Multi-agent research orchestration using Ollama cloud models. Spawn parallel workers with focused research angles, each with web search access, and collect their outputs via a shared scratchpad.
 
-Zero dependencies — pure Python stdlib. Just needs Ollama running locally and optionally a SearXNG instance.
+Zero dependencies — pure Python stdlib. Just needs Ollama running locally. Web search works out of the box via DuckDuckGo (no API key, no self-hosting).
 
 ```bash
 # Quick start
@@ -116,7 +116,7 @@ When `--auto` is set, the orchestrator model (DeepSeek V4 Flash) reads the query
 | 4 | Complex with controversy | "Is the industrial revolution a disaster for humanity?" | 4 |
 | 5 | Deep philosophical/scientific | "Philosophical implications of AI consciousness" | 5 |
 
-Falls back to a regex heuristic if the LLM call fails.
+Falls back to returning 3 (safe default) if the LLM call fails.
 
 ## Scratchpad
 
@@ -141,7 +141,7 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
-| `SEARCH_BACKEND` | `searxng` | Search engine: `searxng`, `ddgs`, or `google` |
+| `SEARCH_BACKEND` | `ddgs` | Search engine: `ddgs`, `searxng`, or `google` |
 | `SEARXNG_URL` | `http://localhost:8080` | SearXNG endpoint (only for `searxng` backend) |
 | `SEARCH_API_KEY` | `""` | API key (required for `google` backend) |
 | `GOOGLE_CX` | `""` | Google Custom Search CX ID (only for `google` backend) |
@@ -152,8 +152,8 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 
 | Backend | Auth needed | Notes |
 |---------|-------------|-------|
-| `searxng` | No (self-hosted) | Default. Point `SEARXNG_URL` at your instance. |
-| `ddgs` | No | DuckDuckGo HTML scraping. No API key, no setup. Rate limits may apply. |
+| `ddgs` | No | **Default.** DuckDuckGo HTML scraping. No API key, no setup. Rate limits may apply. |
+| `searxng` | No (self-hosted) | Point `SEARXNG_URL` at your instance. |
 | `google` | `SEARCH_API_KEY` + `GOOGLE_CX` | Google Custom Search JSON API. 100 free queries/day. |
 
 ### JSON config file
@@ -263,7 +263,8 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 - Python 3.8+ (stdlib only — no pip install needed)
 - Ollama running at `OLLAMA_HOST` (default: localhost:11434)
 - Cloud models pulled via `ollama pull <model>:cloud`
-- SearXNG instance at `SEARXNG_URL` (default: localhost:8080) — optional, workers work without it but can't search the web
+- No SearXNG needed — DuckDuckGo is the default backend and works out of the box
+- Optional: SearXNG instance at `SEARXNG_URL` for higher rate limits
 
 ## Files
 
