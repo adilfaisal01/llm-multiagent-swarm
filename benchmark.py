@@ -15,11 +15,11 @@ from swarm.worker import run_worker
 GOAL = "What is the capital of France?"
 
 TEAM = [
-    {"name": "Vera",  "model": "qwen3.5:397b-cloud", "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started."},
-    {"name": "Cyrus", "model": "qwen3.5:397b-cloud", "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake."},
-    {"name": "Romy",  "model": "qwen3.5:397b-cloud", "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
-    {"name": "Ash",   "model": "qwen3.5:397b-cloud", "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
-    {"name": "Zara",  "model": "qwen3.5:397b-cloud", "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood."},
+    {"name": "Vera",  "model": "gpt-oss:120b-cloud", "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started."},
+    {"name": "Cyrus", "model": "gpt-oss:120b-cloud", "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake."},
+    {"name": "Romy",  "model": "gpt-oss:120b-cloud", "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
+    {"name": "Ash",   "model": "gpt-oss:120b-cloud", "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
+    {"name": "Zara",  "model": "gpt-oss:120b-cloud", "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood."},
 ]
 
 
@@ -32,7 +32,7 @@ def benchmark_parallel():
     print(f"{'='*60}\n")
 
     start = time.time()
-    result = run_swarm(GOAL, workers=5, mix=False, model="qwen3.5:397b-cloud")
+    result = run_swarm(GOAL, workers=5, mix=False, model="gpt-oss:120b-cloud")
     wall_time = round(time.time() - start, 1)
 
     for w in result["workers"]:
