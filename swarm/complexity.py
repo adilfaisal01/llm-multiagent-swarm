@@ -1,35 +1,33 @@
-"""Complexity estimation — feedforward worker count based on query analysis.
+"""Complexity estimation — uses the orchestrator model to judge query depth.
 
-The orchestrator (me) judges query complexity before spawning workers.
-This sets the initial worker count. The scratchpad provides feedback
-for adjustment if needed.
+The orchestrator model (default: gpt-oss:120b-cloud) reads the query and
+rates its complexity 1-5 based on semantic understanding. Falls back to
+regex heuristic if the LLM call fails.
 
-Note: This is a heuristic, not a measurement. It's good enough for a starting
-point. The feedback loop (marginal gain from scratchpad) corrects for
-mis-estimates.
+This is one quick call before spawning workers — negligible overhead
+compared to the full swarm run.
 """
 
+import json
 import re
+import urllib.request
 
 
-def estimate_complexity(goal: str) -> int:
-    """Estimate query complexity on a scale of 1-5.
+def _regex_fallback(goal: str) -> int:
+    """Heuristic fallback if the LLM call fails."""
+    score = 1
 
-    Counts distinct signals that indicate depth/breadth.
-    """
-    score = 1  # base: at least 1 worker for any query
-
-    # Longer questions tend to be more complex
     if len(goal.split()) > 4:
         score += 1
 
-    # Reasoning depth — includes evaluative/critical analysis patterns
-    if re.search(r'\b(why|how|explain|analyze|describe|implications?|impact|analysis|effects?|significance|meaning|purpose|'
-                 r'validity|evaluate|assessment?|critique|criteria|evidence|justif(y|ication)|'
-                 r'merits|drawbacks|pros|cons|strengths|weaknesses)\b', goal, re.IGNORECASE):
+    # Reasoning depth
+    if re.search(r'\b(why|how|explain|analyze|describe|implications?|impact|analysis|effects?|'
+                 r'significance|meaning|purpose|validity|evaluate|assessment?|critique|criteria|'
+                 r'evidence|justif(y|ication)|merits|drawbacks|pros|cons|strengths|weaknesses|'
+                 r'valid|claim|assertion|argument|thesis|hypothesis)\b', goal, re.IGNORECASE):
         score += 1
 
-    # Comparison / sub-topics
+    # Comparison
     if re.search(r'\b(difference|differences|compare|contrast|vs|versus|compared)\b', goal, re.IGNORECASE):
         score += 1
 
@@ -49,7 +47,7 @@ def estimate_complexity(goal: str) -> int:
                  r'pros|cons|argument|disagreement)\b', goal, re.IGNORECASE):
         score += 1
 
-    # Multi-dimensional (mentions 2+ of history/future/technical/economic/etc)
+    # Multi-dimensional
     dim_pattern = r'\b(history|origins|timeline|future|trends?|technical|'
     dim_pattern += r'economic|financial|political|social|cultural|practical|theoretical|'
     dim_pattern += r'industrial|revolution|consequences|disaster|environmental|humanity)\b'
@@ -57,8 +55,62 @@ def estimate_complexity(goal: str) -> int:
     if len(set(m.lower() for m in dim_matches)) >= 2:
         score += 1
 
-    # Temporal (current events, recent, year)
+    # Temporal
     if re.search(r'\b(202[4-9]|2030|current|recent|upcoming|modern|contemporary|forecast)\b', goal, re.IGNORECASE):
         score += 1
 
     return max(1, min(5, score))
+
+
+def estimate_complexity(goal: str, model: str | None = None,
+                        ollama_base: str = "http://localhost:11434") -> int:
+    """Estimate query complexity 1-5 using the orchestrator model.
+
+    Makes one quick LLM call to actually read and understand the query.
+    Falls back to regex heuristic if the call fails.
+    """
+    if not model:
+        return _regex_fallback(goal)
+
+    prompt = (
+        "Rate the research complexity of this query on a scale of 1 to 5.\n\n"
+        "1 = Simple fact lookup (e.g. 'What is the capital of France?')\n"
+        "2 = Straightforward explanation (e.g. 'Explain REST vs GraphQL')\n"
+        "3 = Multi-faceted topic needing 2-3 angles (e.g. 'Impact of quantum computing on cryptography')\n"
+        "4 = Complex topic needing 4+ angles with controversy or depth (e.g. 'Is the industrial revolution a disaster for humanity?')\n"
+        "5 = Deep philosophical/scientific question needing 5 angles (e.g. 'Philosophical implications of AI consciousness')\n\n"
+        "Respond with ONLY a single digit 1-5. No explanation, no formatting.\n\n"
+        f"Query: {goal}"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a query complexity classifier. Respond with a single digit 1-5."},
+            {"role": "user", "content": prompt},
+        ],
+        "stream": False,
+        "options": {"num_predict": 4, "temperature": 0.0},
+    }
+
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        f"{ollama_base}/api/chat",
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+            content = result.get("message", {}).get("content", "").strip()
+
+        # Parse the digit
+        match = re.search(r'[1-5]', content)
+        if match:
+            return int(match.group(0))
+    except Exception:
+        pass
+
+    # Fallback to regex heuristic
+    return _regex_fallback(goal)

@@ -52,12 +52,18 @@ def main():
         print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!")
         sys.exit(1)
 
+    # Ollama base URL (needed before worker count for auto-estimation)
+    ollama_raw = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    ollama_base = f"http://{ollama_raw}" if not ollama_raw.startswith("http") else ollama_raw
+
     # Determine worker count
     if args.workers is not None:
         num_workers = min(max(args.workers, 1), 5)
     elif args.auto:
-        num_workers = estimate_complexity(args.goal)
-        print(f"  [AUTO] Estimated complexity: {num_workers}/5 workers", file=sys.stderr)
+        # Use the orchestrator model (gpt-oss:120b) for semantic complexity estimation
+        est_model = defaults["default_worker"]
+        num_workers = estimate_complexity(args.goal, model=est_model, ollama_base=ollama_base)
+        print(f"  [AUTO] Estimated complexity: {num_workers}/5 workers (model: {est_model.split(':')[0]})", file=sys.stderr)
     else:
         num_workers = 3  # sensible default
 
@@ -65,10 +71,6 @@ def main():
     model = None
     if args.model:
         model = defaults["worker_models"].get(args.model, args.model)
-
-    # Ollama base URL
-    ollama_raw = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    ollama_base = f"http://{ollama_raw}" if not ollama_raw.startswith("http") else ollama_raw
 
     # Run the swarm
     result = orchestrate(
