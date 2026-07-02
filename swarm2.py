@@ -25,7 +25,8 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_RAW = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_BASE = f"http://{OLLAMA_RAW}" if not OLLAMA_RAW.startswith("http") else OLLAMA_RAW
 SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "searxng")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
@@ -34,29 +35,6 @@ CONFIG_PATH = os.environ.get("SWARM_CONFIG", "swarm_config.json")
 
 
 # ─── Config loader ───────────────────────────────────────────────────────────
-
-def load_swarm_config(path: str = CONFIG_PATH) -> dict:
-    """Load swarm configuration from JSON file."""
-    if not os.path.exists(path):
-        print(f"  [INFO] Config not found at {path}, using defaults", file=sys.stderr)
-        return {}
-
-    with open(path) as f:
-        cfg = json.load(f)
-
-    # Resolve model aliases to full tags
-    models = cfg.get("models", {})
-    for member in cfg.get("team", []):
-        alias = member.get("model", "")
-        if alias in models:
-            member["_model_tag"] = models[alias]
-        else:
-            member["_model_tag"] = alias
-
-    return cfg
-
-
-# ─── Load config ─────────────────────────────────────────────────────────────
 
 def load_swarm_config(path: str = CONFIG_PATH) -> dict:
     """Load swarm configuration from JSON file."""
@@ -435,7 +413,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     for i in range(num_workers):
         if mix:
             member = TEAM[i % len(TEAM)]
-            w_model = WORKER_MODELS[member["model"]]
+            w_model = member["model"]
             workers.append({
                 "name": member["name"],
                 "model": w_model,
