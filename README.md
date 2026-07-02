@@ -8,20 +8,66 @@ Zero dependencies — pure Python stdlib. Just needs Ollama running locally and 
 python3 swarm2.py --goal "What's happening with AI regulation in the EU?" --mix
 ```
 
-## How it works
+## Architecture
 
 ```
-You (orchestrator)
-    ├── Worker 1: origins & history
-    ├── Worker 2: money & players
-    ├── Worker 3: implications & future
-    ├── Worker 4: controversies
-    └── Worker 5: technical details
-              ↓
-    You synthesize everything into a unified take
+                         ┌─────────────────────────────────────┐
+                         │         YOU (the user)             │
+                         │   python3 swarm2.py --goal "..."   │
+                         └──────────────┬──────────────────────┘
+                                        │
+                         ┌──────────────▼──────────────────────┐
+                         │         ORCHESTRATOR               │
+                         │  • Parses --goal, --mix, --config  │
+                         │  • Loads swarm_config.json         │
+                         │  • Spawns workers in parallel      │
+                         │  • Collects & returns results      │
+                         └──────┬──────┬──────┬──────┬───────┘
+                                │      │      │      │
+          ┌─────────────────────┼──────┼──────┼──────┼─────────────────────┐
+          │                     │      │      │      │                     │
+          ▼                     ▼      ▼      ▼      ▼                     ▼
+   ┌───────────┐        ┌───────────┐ ┌───────────┐ ┌───────────┐  ┌───────────┐
+   │   VERA    │        │   CYRUS   │ │   ROMY    │ │   ASH     │  │   ZARA    │
+   │ gpt-oss   │        │ nemotron  │ │ qwen3.5   │ │ deepseek  │  │ gpt-oss   │
+   │ 120B      │        │ 30B       │ │ 397B      │ │ flash     │  │ 120B      │
+   │           │        │           │ │           │ │           │  │           │
+   │ ORIGINS   │        │  MONEY    │ │ FUTURE    │ │ CONTRO-   │  │ TECHNICAL │
+   │ & HISTORY │        │ & PLAYERS │ │ & IMPLI-  │ │ VERSIES   │  │ DETAILS   │
+   │           │        │           │ │ CATIONS   │ │           │  │           │
+   └─────┬─────┘        └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  └─────┬─────┘
+         │                    │             │             │              │
+         └──────────┬─────────┘             │             │              │
+                    │                       │             │              │
+         ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
+         │                     TOOL RUNTIME                                     │
+         │                                                                      │
+         │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐  │
+         │  │   web_search()   │  │  web_extract()  │  │  Ollama /api/chat   │  │
+         │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌────────────────┐ │  │
+         │  │  │ SearXNG   │  │  │  │ Web pages │  │  │  │ Model response │ │  │
+         │  │  │ DuckDuckGo│  │  │  │ Articles  │  │  │  │ + tool_calls   │ │  │
+         │  │  │ Google    │  │  │  │ PDFs      │  │  │  │ + content      │ │  │
+         │  │  └───────────┘  │  │  └───────────┘  │  │  └────────────────┘ │  │
+         │  └─────────────────┘  └─────────────────┘  └──────────────────────┘  │
+         └──────────────────────────────────────────────────────────────────────┘
+                                        │
+                         ┌──────────────▼──────────────────────┐
+                         │         SYNTHESIS                   │
+                         │  • 5 angles → 1 unified picture    │
+                         │  • Each worker's unique perspective │
+                         │  • Cross-referenced, no overlap     │
+                         └──────────────┬──────────────────────┘
+                                        │
+                         ┌──────────────▼──────────────────────┐
+                         │         OUTPUT                      │
+                         │  • Human-readable (default)         │
+                         │  • JSON (--json flag)              │
+                         │  • Per-worker stats + content      │
+                         └─────────────────────────────────────┘
 ```
 
-Each worker is an Ollama model with tool-calling access to `web_search` and `web_extract`. They search independently, read pages, and write their report. The orchestrator runs them in parallel via `ThreadPoolExecutor`.
+Each worker is an independent Ollama model with tool-calling access to `web_search` and `web_extract`. They search the web, read pages, and write their report — all in parallel via `ThreadPoolExecutor`. The orchestrator collects everything and hands it back to you for synthesis.
 
 ## Quick start
 
@@ -146,7 +192,9 @@ If a model exhausts all 3 search rounds without producing a final answer, the sc
 ## Files
 
 ```
-├── swarm2.py     # Main script with web search support
-├── swarm.py      # Minimal version (no web search, training data only)
-└── README.md     # This file
+├── swarm2.py           # Main script with web search support
+├── swarm_config.json   # Configurable team, models, prompts
+├── swarm.py            # Minimal version (no web search, training data only)
+├── TEST_RESULTS.md     # Full test suite results + chaos monkey tests
+└── README.md           # This file
 ```
