@@ -30,8 +30,59 @@ SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "searxng")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
 SEARCH_TIMEOUT = int(os.environ.get("SEARCH_TIMEOUT", "15"))
+CONFIG_PATH = os.environ.get("SWARM_CONFIG", "swarm_config.json")
 
-WORKER_MODELS = {
+
+# ─── Config loader ───────────────────────────────────────────────────────────
+
+def load_swarm_config(path: str = CONFIG_PATH) -> dict:
+    """Load swarm configuration from JSON file."""
+    if not os.path.exists(path):
+        print(f"  [INFO] Config not found at {path}, using defaults", file=sys.stderr)
+        return {}
+
+    with open(path) as f:
+        cfg = json.load(f)
+
+    # Resolve model aliases to full tags
+    models = cfg.get("models", {})
+    for member in cfg.get("team", []):
+        alias = member.get("model", "")
+        if alias in models:
+            member["_model_tag"] = models[alias]
+        else:
+            member["_model_tag"] = alias
+
+    return cfg
+
+
+# ─── Load config ─────────────────────────────────────────────────────────────
+
+def load_swarm_config(path: str = CONFIG_PATH) -> dict:
+    """Load swarm configuration from JSON file."""
+    if not os.path.exists(path):
+        print(f"  [INFO] Config not found at {path}, using defaults", file=sys.stderr)
+        return {}
+
+    with open(path) as f:
+        cfg = json.load(f)
+
+    # Resolve model aliases to full tags
+    models = cfg.get("models", {})
+    for member in cfg.get("team", []):
+        alias = member.get("model", "")
+        if alias in models:
+            member["_model_tag"] = models[alias]
+        else:
+            member["_model_tag"] = alias
+
+    return cfg
+
+
+CONFIG = load_swarm_config()
+
+# Build WORKER_MODELS from config, fall back to hardcoded defaults
+WORKER_MODELS = CONFIG.get("models", {}) or {
     "ministral": "ministral-3:14b-cloud",
     "nemotron": "nemotron-3-nano:30b-cloud",
     "nemotron-super": "nemotron-3-super:cloud",
@@ -42,24 +93,42 @@ WORKER_MODELS = {
     "flash": "deepseek-v4-flash:cloud",
 }
 MODEL_LIST = list(WORKER_MODELS.keys())
-DEFAULT_WORKER = WORKER_MODELS["gpt-oss"]
+DEFAULT_WORKER = WORKER_MODELS.get(
+    CONFIG.get("default_model", ""),
+    WORKER_MODELS.get("gpt-oss", "gpt-oss:120b-cloud"),
+)
 
-# ─── Team assignments (used in --mix mode) ───────────────────────────────────
+# Build TEAM from config, fall back to hardcoded defaults
+raw_team = CONFIG.get("team", [])
+if raw_team:
+    TEAM = []
+    for m in raw_team:
+        TEAM.append({
+            "name": m.get("name", "Worker"),
+            "model": m.get("_model_tag", m.get("model", DEFAULT_WORKER)),
+            "prompt": m.get("prompt", ""),
+            "angle": m.get("angle", ""),
+        })
+else:
+    TEAM = [
+        {"name": "Vera",  "model": WORKER_MODELS.get("gpt-oss", "gpt-oss:120b-cloud"),  "prompt": "", "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started."},
+        {"name": "Cyrus", "model": WORKER_MODELS.get("nemotron", "nemotron-3-nano:30b-cloud"), "prompt": "", "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake."},
+        {"name": "Romy",  "model": WORKER_MODELS.get("qwen", "qwen3.5:397b-cloud"),      "prompt": "", "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
+        {"name": "Ash",   "model": WORKER_MODELS.get("deepseek", "deepseek-v4-flash:cloud"), "prompt": "", "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
+        {"name": "Zara",  "model": WORKER_MODELS.get("gpt-oss", "gpt-oss:120b-cloud"),  "prompt": "", "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood."},
+    ]
 
-TEAM = [
-    {"name": "Vera",  "model": "gpt-oss",         "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started."},
-    {"name": "Cyrus", "model": "nemotron",        "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake."},
-    {"name": "Romy",  "model": "qwen",            "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
-    {"name": "Ash",   "model": "deepseek",        "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
-    {"name": "Zara",  "model": "gpt-oss",         "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood."},
-]
-
-ANGLES = [
+ANGLES = CONFIG.get("angles", []) or [
     "Cover ORIGINS and HISTORY. Timeline, background, how it started.",
     "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake.",
     "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading.",
     "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say.",
     "Cover TECHNICAL DETAILS. How it actually works under the hood.",
+]
+
+FALLBACK_MODELS = CONFIG.get("fallback_models", []) or [
+    "gpt-oss:120b-cloud",
+    "nemotron-3-nano:30b-cloud",
 ]
 
 # ─── Tool definitions for Ollama ────────────────────────────────────────────
@@ -213,14 +282,17 @@ def execute_tool(tool_call: dict) -> str:
 # ─── Worker agent loop ──────────────────────────────────────────────────────
 
 def run_worker(task_id: int, goal: str, worker_name: str,
-               model_name: str, angle: str) -> dict:
-    system_prompt = (
-        f"You are {worker_name}, a focused research agent on Sabrina's team.\n\n"
-        f"MAIN QUESTION: {goal}\n\n"
-        f"YOUR ANGLE: {angle}\n\n"
-        "You have web_search and web_extract tools. Search for current info, "
-        "then write your report. Be factual with names, dates, numbers."
-    )
+               model_name: str, angle: str, prompt_template: str = "") -> dict:
+    if prompt_template:
+        system_prompt = prompt_template.replace("{goal}", goal).replace("{angle}", angle)
+    else:
+        system_prompt = (
+            f"You are {worker_name}, a focused research agent.\n\n"
+            f"MAIN QUESTION: {goal}\n\n"
+            f"YOUR ANGLE: {angle}\n\n"
+            "You have web_search and web_extract tools. Search for current info, "
+            "then write your report. Be factual with names, dates, numbers."
+        )
 
     start = time.time()
     messages = [
@@ -312,8 +384,7 @@ def run_worker(task_id: int, goal: str, worker_name: str,
     
     if not content:
         # Both force-synthesis attempts failed. Try swapping to a known-working model.
-        fallback_models = ["gpt-oss:120b-cloud", "nemotron-3-nano:30b-cloud"]
-        for fb_model in fallback_models:
+        for fb_model in FALLBACK_MODELS:
             if fb_model == model_name:
                 continue
             try:
@@ -391,7 +462,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     results = []
     with ThreadPoolExecutor(max_workers=num_workers) as ex:
         futures = {
-            ex.submit(run_worker, i + 1, goal, w["name"], w["model"], w["angle"]): i
+            ex.submit(run_worker, i + 1, goal, w["name"], w["model"], w["angle"], w.get("prompt", "")): i
             for i, w in enumerate(workers)
         }
         for f in as_completed(futures):
@@ -415,6 +486,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
 # ─── CLI ────────────────────────────────────────────────────────────────────
 
 def main():
+    global CONFIG, WORKER_MODELS, MODEL_LIST, DEFAULT_WORKER, TEAM, ANGLES, FALLBACK_MODELS
     ap = argparse.ArgumentParser(description="Swarm v2 with web search and mixed models")
     ap.add_argument("--goal", required=True)
     ap.add_argument("--workers", type=int, default=5)
@@ -422,11 +494,37 @@ def main():
                     help=f"Model for uniform mode: {', '.join(MODEL_LIST)}")
     ap.add_argument("--mix", action="store_true",
                     help="Mix different models per worker (Vera/Cyrus/Romy/etc)")
+    ap.add_argument("--config", default=None,
+                    help="Path to YAML config file (default: swarm_config.yaml or $SWARM_CONFIG)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     model = WORKER_MODELS.get(args.model, args.model) if args.model else None
     args.workers = min(max(args.workers, 1), 5)
+
+    # Reload config if --config was passed
+    if args.config:
+        new_cfg = load_swarm_config(args.config)
+        if new_cfg:
+            CONFIG = new_cfg
+            WORKER_MODELS = CONFIG.get("models", {}) or WORKER_MODELS
+            MODEL_LIST = list(WORKER_MODELS.keys())
+            DEFAULT_WORKER = WORKER_MODELS.get(
+                CONFIG.get("default_model", ""),
+                WORKER_MODELS.get("gpt-oss", "gpt-oss:120b-cloud"),
+            )
+            raw_team = CONFIG.get("team", [])
+            if raw_team:
+                TEAM = []
+                for m in raw_team:
+                    TEAM.append({
+                        "name": m.get("name", "Worker"),
+                        "model": m.get("_model_tag", m.get("model", DEFAULT_WORKER)),
+                        "prompt": m.get("prompt", ""),
+                        "angle": m.get("angle", ""),
+                    })
+            ANGLES = CONFIG.get("angles", []) or ANGLES
+            FALLBACK_MODELS = CONFIG.get("fallback_models", []) or FALLBACK_MODELS
 
     result = orchestrate(args.goal, args.workers, model, args.mix)
 

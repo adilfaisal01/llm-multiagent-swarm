@@ -1,0 +1,56 @@
+{
+  "models": {
+    "ministral": "ministral-3:14b-cloud",
+    "nemotron": "nemotron-3-nano:30b-cloud",
+    "nemotron-super": "nemotron-3-super:cloud",
+    "gpt-oss": "gpt-oss:120b-cloud",
+    "gemma": "gemma4:31b-cloud",
+    "qwen": "qwen3.5:397b-cloud",
+    "deepseek": "deepseek-v4-flash:cloud",
+    "flash": "deepseek-v4-flash:cloud"
+  },
+  "default_model": "gpt-oss",
+  "team": [
+    {
+      "name": "Vera",
+      "model": "gpt-oss",
+      "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started.",
+      "prompt": "You are Vera, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
+    },
+    {
+      "name": "Cyrus",
+      "model": "nemotron",
+      "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake.",
+      "prompt": "You are Cyrus, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
+    },
+    {
+      "name": "Romy",
+      "model": "qwen",
+      "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading.",
+      "prompt": "You are Romy, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
+    },
+    {
+      "name": "Ash",
+      "model": "deepseek",
+      "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say.",
+      "prompt": "You are Ash, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
+    },
+    {
+      "name": "Zara",
+      "model": "gpt-oss",
+      "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood.",
+      "prompt": "You are Zara, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
+    }
+  ],
+  "angles": [
+    "Cover ORIGINS and HISTORY. Timeline, background, how it started.",
+    "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake.",
+    "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading.",
+    "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say.",
+    "Cover TECHNICAL DETAILS. How it actually works under the hood."
+  ],
+  "fallback_models": [
+    "gpt-oss:120b-cloud",
+    "nemotron-3-nano:30b-cloud"
+  ]
+}

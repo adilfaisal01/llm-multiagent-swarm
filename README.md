@@ -44,7 +44,9 @@ python3 swarm2.py --goal "Your question" --model qwen --workers 3
 
 ## Configuration
 
-All config is via environment variables:
+All config is via environment variables or a JSON config file (`swarm_config.json` by default, or set via `SWARM_CONFIG` env var or `--config` flag).
+
+### Env vars
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -54,6 +56,7 @@ All config is via environment variables:
 | `SEARCH_API_KEY` | `""` | API key (required for `google` backend) |
 | `GOOGLE_CX` | `""` | Google Custom Search CX ID (only for `google` backend) |
 | `SEARCH_TIMEOUT` | `15` | Timeout for search/extract calls in seconds |
+| `SWARM_CONFIG` | `swarm_config.json` | Path to JSON config file |
 
 ### Search backends
 
@@ -62,6 +65,31 @@ All config is via environment variables:
 | `searxng` | No (self-hosted) | Default. Point `SEARXNG_URL` at your instance. |
 | `ddgs` | No | DuckDuckGo HTML scraping. No API key, no setup. Rate limits may apply. |
 | `google` | `SEARCH_API_KEY` + `GOOGLE_CX` | Google Custom Search JSON API. 100 free queries/day. |
+
+### JSON config file
+
+The `swarm_config.json` file lets you customize models, team members, prompts, angles, and fallback models. Pass a custom config with `--config my_config.json` or `SWARM_CONFIG=my_config.json`.
+
+```json
+{
+  "models": {
+    "my-model": "my-model:latest"
+  },
+  "default_model": "my-model",
+  "team": [
+    {
+      "name": "Agent1",
+      "model": "my-model",
+      "angle": "Your angle description",
+      "prompt": "You are Agent1... MAIN QUESTION: {goal}... YOUR ANGLE: {angle}..."
+    }
+  ],
+  "angles": ["Angle 1", "Angle 2"],
+  "fallback_models": ["my-model:latest"]
+}
+```
+
+See `swarm_config.json` for a full example.
 
 ## Available models
 
@@ -90,7 +118,7 @@ In `--mix` mode, each worker gets a different model and named identity:
 | **Zara** | gpt-oss | Technical details |
 
 ```bash
-python3 swarm2.py --goal "Your question" --mix
+python3 swarm2.py --goal "Your question" --mix --config my_team.json
 ```
 
 ## How tool calling works
