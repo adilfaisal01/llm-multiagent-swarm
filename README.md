@@ -88,7 +88,7 @@ ollama pull deepseek-v4-flash:cloud
 ollama pull qwen3.5:397b-cloud
 ollama pull nemotron-3-nano:30b-cloud
 
-# Fire the swarm (new package)
+# Fire the swarm
 python3 -m swarm --goal "Your research question" --mix
 
 # Auto-estimate worker count based on query complexity
@@ -286,10 +286,12 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 ├── swarm.py               # Minimal version (no web search)
 ├── SCRATCHPAD.md           # Scratchpad architecture docs
 ├── BENCHMARK.md            # Benchmark results
-├── benchmark.py            # Benchmark script
+├── benchmark.py            # Benchmark script (library-based)
+├── benchmark_hard.py       # Hard query benchmark (library-based)
 ├── CHAOS_MONKEY_RESULTS.md # Chaos monkey test results
 ├── AGENTS.md               # AI agent context file
 ├── chaos_monkey.sh         # 15 chaos monkey tests
+├── test_queries.sh         # Test query runner
 ├── setup-hooks.sh          # Git hook installer
 ├── .githooks/              # Git hooks directory
 │   └── post-commit        # Auto-runs tests on every commit
