@@ -1,11 +1,12 @@
-# 🐝 Lightweight Swarm
+# 🐝 Swarm v2
 
-Grok-style multi-agent orchestration using Ollama cloud models. Spawn parallel workers with focused research angles, each with web search access, and synthesize their outputs.
+Multi-agent research orchestration using Ollama cloud models. Spawn parallel workers with focused research angles, each with web search access, and collect their outputs via a shared scratchpad.
 
 Zero dependencies — pure Python stdlib. Just needs Ollama running locally and optionally a SearXNG instance.
 
 ```bash
-python3 swarm2.py --goal "What's happening with AI regulation in the EU?" --mix
+# Quick start
+python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
 ```
 
 ## Architecture
@@ -13,15 +14,17 @@ python3 swarm2.py --goal "What's happening with AI regulation in the EU?" --mix
 ```
                          ┌─────────────────────────────────────┐
                          │         YOU (the user)             │
-                         │   python3 swarm2.py --goal "..."   │
+                         │   python3 -m swarm --goal "..."   │
                          └──────────────┬──────────────────────┘
                                         │
                          ┌──────────────▼──────────────────────┐
                          │         ORCHESTRATOR               │
                          │  • Parses --goal, --mix, --config  │
                          │  • Loads swarm_config.json         │
+                         │  • Estimates complexity (1-5)      │
                          │  • Spawns workers in parallel      │
-                         │  • Collects & returns results      │
+                         │  • Reads scratchpad after workers   │
+                         │  • Destroys scratchpad, saves .md   │
                          └──────┬──────┬──────┬──────┬───────┘
                                 │      │      │      │
           ┌─────────────────────┼──────┼──────┼──────┼─────────────────────┐
@@ -38,36 +41,40 @@ python3 swarm2.py --goal "What's happening with AI regulation in the EU?" --mix
    └─────┬─────┘        └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  └─────┬─────┘
          │                    │             │             │              │
          └──────────┬─────────┘             │             │              │
-                    │                       │             │              │
-         ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
-         │                     TOOL RUNTIME                                     │
-         │                                                                      │
-         │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐  │
-         │  │   web_search()   │  │  web_extract()  │  │  Ollama /api/chat   │  │
-         │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌────────────────┐ │  │
-         │  │  │ SearXNG   │  │  │  │ Web pages │  │  │  │ Model response │ │  │
-         │  │  │ DuckDuckGo│  │  │  │ Articles  │  │  │  │ + tool_calls   │ │  │
-         │  │  │ Google    │  │  │  │ PDFs      │  │  │  │ + content      │ │  │
-         │  │  └───────────┘  │  │  └───────────┘  │  │  └────────────────┘ │  │
-         │  └─────────────────┘  └─────────────────┘  └──────────────────────┘  │
-         └──────────────────────────────────────────────────────────────────────┘
-                                        │
-                         ┌──────────────▼──────────────────────┐
-                         │         SYNTHESIS                   │
-                         │  • 5 angles → 1 unified picture    │
-                         │  • Each worker's unique perspective │
-                         │  • Cross-referenced, no overlap     │
-                         └──────────────┬──────────────────────┘
+                     │                       │             │              │
+          ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
+          │                     TOOL RUNTIME                                     │
+          │                                                                      │
+          │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐  │
+          │  │   web_search()   │  │  web_extract()  │  │  Ollama /api/chat   │  │
+          │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌────────────────┐ │  │
+          │  │  │ SearXNG   │  │  │  │ Web pages │  │  │  │ Model response │ │  │
+          │  │  │ DuckDuckGo│  │  │  │ Articles  │  │  │  │ + tool_calls   │ │  │
+          │  │  │ Google    │  │  │  │ PDFs      │  │  │  │ + content      │ │  │
+          │  │  └───────────┘  │  │  └───────────┘  │  │  └────────────────┘ │  │
+          │  └─────────────────┘  └─────────────────┘  └──────────────────────┘  │
+          │                                                                      │
+          │  ┌────────────────────────────────────────────────────────────────┐  │
+          │  │   SCRATCHPAD (write-only RAM SQLite)                          │  │
+          │  │   • Agents auto-log every web_search + web_extract result     │  │
+          │  │   • Agents can also call scratchpad_add() manually             │  │
+          │  │   • Write-only from agent perspective — no context pollution  │  │
+          │  │   • Orchestrator reads after all workers finish               │  │
+          │  │   • DB destroyed after .md file is saved                      │  │
+          │  └────────────────────────────────────────────────────────────────┘  │
+          └──────────────────────────────────────────────────────────────────────┘
                                         │
                          ┌──────────────▼──────────────────────┐
                          │         OUTPUT                      │
-                         │  • Human-readable (default)         │
-                         │  • JSON (--json flag)              │
-                         │  • Per-worker stats + content      │
+                         │  • Auto-saved to .md file          │
+                         │  • Per-worker sections + stats     │
+                         │  • Scratchpad findings table       │
+                         │  • Source URL list                  │
+                         │  • JSON (--json flag)             │
                          └─────────────────────────────────────┘
 ```
 
-Each worker is an independent Ollama model with tool-calling access to `web_search` and `web_extract`. They search the web, read pages, and write their report — all in parallel via `ThreadPoolExecutor`. The orchestrator collects everything and hands it back to you for synthesis.
+Each worker is an independent Ollama model with tool-calling access to `web_search` and `web_extract`. They search the web, read pages, and write their report — all in parallel via `ThreadPoolExecutor`. Every search and extract result is automatically logged to the scratchpad. The orchestrator collects everything, reads the scratchpad for cross-referencing, and saves the full output to a timestamped `.md` file.
 
 ## Quick start
 
@@ -75,18 +82,55 @@ Each worker is an independent Ollama model with tool-calling access to `web_sear
 # Make sure Ollama is running
 ollama serve
 
-# Pull a cloud model (or use any model you have locally)
+# Pull cloud models
 ollama pull gpt-oss:120b-cloud
+ollama pull deepseek-v4-flash:cloud
+ollama pull qwen3.5:397b-cloud
+ollama pull nemotron-3-nano:30b-cloud
 
-# Fire the swarm
-python3 swarm2.py --goal "Your research question" --mix
+# Fire the swarm (new package)
+python3 -m swarm --goal "Your research question" --mix
 
-# Get JSON output for programmatic use
-python3 swarm2.py --goal "Your question" --mix --json
+# Auto-estimate worker count based on query complexity
+python3 -m swarm --goal "Your question" --auto --mix
 
 # Uniform mode (all workers use the same model)
-python3 swarm2.py --goal "Your question" --model qwen --workers 3
+python3 -m swarm --goal "Your question" --model qwen --workers 3
+
+# JSON output for programmatic use
+python3 -m swarm --goal "Your question" --mix --json
+
+# Legacy script (still works)
+python3 swarm2.py --goal "Your question" --mix
 ```
+
+## Complexity estimation (`--auto`)
+
+When `--auto` is set, the orchestrator model (DeepSeek V4 Flash) reads the query and rates its complexity 1-5 before spawning workers:
+
+| Rating | Meaning | Example | Workers |
+|--------|---------|---------|---------|
+| 1 | Simple fact lookup | "What is the capital of France?" | 1 |
+| 2 | Straightforward explanation | "Explain REST vs GraphQL" | 2 |
+| 3 | Multi-faceted topic | "Impact of quantum computing on cryptography" | 3 |
+| 4 | Complex with controversy | "Is the industrial revolution a disaster for humanity?" | 4 |
+| 5 | Deep philosophical/scientific | "Philosophical implications of AI consciousness" | 5 |
+
+Falls back to a regex heuristic if the LLM call fails.
+
+## Scratchpad
+
+The scratchpad is a write-only RAM SQLite database that workers use to log raw findings:
+
+- **Auto-logged**: Every `web_search` and `web_extract` result is automatically saved
+- **Manual logging**: Workers can call `scratchpad_add()` for custom facts, quotes, numbers
+- **Write-only**: Workers never read the scratchpad — no context pollution between agents
+- **Orchestrator reads**: After all workers finish, the orchestrator reads the scratchpad and includes a findings table + source list in the output
+- **Auto-destroyed**: The `:memory:` database is closed after the `.md` file is saved
+
+Schema:
+- `findings(worker, source_url, finding, category, confidence, timestamp)`
+- `sources(worker, url, title, snippet, timestamp)`
 
 ## Configuration
 
@@ -145,7 +189,7 @@ See `swarm_config.json` for a full example.
 | `nemotron` | nemotron-3-nano:30b-cloud | 30B | ~0.5-15s | Fast, production-proven |
 | `qwen` | qwen3.5:397b-cloud | 397B | ~8-50s | Best reasoning, often answers from weights |
 | `gemma` | gemma4:31b-cloud | 31B | ~13-30s | Slower, pre-2026 cutoff |
-| `deepseek` | deepseek-v4-flash:cloud | ~158B | ~4-20s | Fast, thinking mode spills monologue |
+| `deepseek` | deepseek-v4-flash:cloud | ~158B | ~4-20s | Fast, used for complexity estimation |
 | `ministral` | ministral-3:14b-cloud | 14B | ~4.5-20s | ⚠️ Being retired by Ollama Cloud |
 | `nemotron-super` | nemotron-3-super:cloud | 120B | ~1-20s | ⚠️ Buggy — may time out or return empty |
 
@@ -164,16 +208,16 @@ In `--mix` mode, each worker gets a different model and named identity:
 | **Zara** | gpt-oss | Technical details |
 
 ```bash
-python3 swarm2.py --goal "Your question" --mix --config my_team.json
+python3 -m swarm --goal "Your question" --mix --config my_team.json
 ```
 
 ## How tool calling works
 
-Ollama's `/api/chat` endpoint supports native function calling. The swarm script:
+Ollama's `/api/chat` endpoint supports native function calling. The swarm:
 
 1. Sends prompt + tool definitions to the model
 2. Model responds with `tool_calls` (search query) or content (final answer)
-3. Script executes the tool against SearXNG
+3. Script executes the tool against the configured search backend
 4. Feeds results back as a `role: "tool"` message
 5. Loop repeats up to 3 rounds until the model has enough info to answer
 
@@ -181,6 +225,15 @@ If a model exhausts all 3 search rounds without producing a final answer, the sc
 1. Sends a gentle "synthesize your findings" prompt
 2. If that fails, sends an aggressive "STOP SEARCHING. WRITE NOW." prompt
 3. If both fail, falls back to re-firing the question at a different model
+
+## Performance
+
+Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK.md` for full results.
+
+| Mode | Easy query | Hard query |
+|------|-----------|------------|
+| Sequential | 150.4s | 264.0s |
+| Parallel | 45.6s (3.3×) | 77.3s (3.4×) |
 
 ## Requirements
 
@@ -192,9 +245,22 @@ If a model exhausts all 3 search rounds without producing a final answer, the sc
 ## Files
 
 ```
-├── swarm2.py           # Main script with web search support
-├── swarm_config.json   # Configurable team, models, prompts
-├── swarm.py            # Minimal version (no web search, training data only)
-├── TEST_RESULTS.md     # Full test suite results + chaos monkey tests
-└── README.md           # This file
+├── swarm/                 # Modular package (new)
+│   ├── __init__.py        # Package exports
+│   ├── __main__.py        # CLI entry point
+│   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
+│   ├── search.py          # Search backends (SearXNG, DDG, Google)
+│   ├── tools.py           # Tool definitions + execute_tool()
+│   ├── worker.py          # Worker agent loop
+│   ├── orchestrator.py    # Spawns workers, manages scratchpad
+│   ├── config.py          # Config loader + defaults
+│   └── complexity.py      # Model-based complexity estimation
+├── swarm2.py              # Legacy monolith (preserved)
+├── swarm_config.json       # Configurable team, models, prompts
+├── swarm.py               # Minimal version (no web search)
+├── SCRATCHPAD.md           # Scratchpad architecture docs
+├── BENCHMARK.md            # Benchmark results
+├── benchmark.py            # Benchmark script
+├── CHAOS_MONKEY_RESULTS.md # Chaos monkey test results
+└── README.md               # This file
 ```
