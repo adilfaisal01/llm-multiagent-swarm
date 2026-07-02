@@ -60,8 +60,8 @@ def main():
     if args.workers is not None:
         num_workers = min(max(args.workers, 1), 5)
     elif args.auto:
-        # Use the orchestrator model (gpt-oss:120b) for semantic complexity estimation
-        est_model = defaults["default_worker"]
+        # Use DeepSeek V4 Flash for semantic complexity estimation
+        est_model = defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud")
         num_workers = estimate_complexity(args.goal, model=est_model, ollama_base=ollama_base)
         print(f"  [AUTO] Estimated complexity: {num_workers}/5 workers (model: {est_model.split(':')[0]})", file=sys.stderr)
     else:
