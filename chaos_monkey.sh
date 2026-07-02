@@ -67,7 +67,7 @@ echo ""
 
 # ─── Test 12: --json output flag ─────────────────────────
 echo "═══ TEST 12: --json output ═══"
-python3 swarm2.py --goal "What is 2+2?" --workers 2 --mix --json 2>&1 | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'JSON valid: ✅, workers: {d[\"num_workers\"]}, models: {d[\"models\"]}')" 2>&1
+python3 swarm2.py --goal "What is 2+2?" --workers 2 --mix --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'JSON valid: ✅, workers: {d[\"num_workers\"]}, models: {d[\"models\"]}')" 2>&1
 echo ""
 
 echo "═══════════════════════════════════════════════════"

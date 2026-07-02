@@ -694,7 +694,7 @@ def main():
             if not args.angle:
                 args.angle = CONFIG.get("angle", "")
 
-    if not args.goal.strip():
+    if not args.goal or not args.goal.strip():
         print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!")
         sys.exit(1)
 
