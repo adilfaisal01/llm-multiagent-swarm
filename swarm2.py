@@ -411,24 +411,31 @@ def run_worker(task_id: int, goal: str, worker_name: str,
 # ─── Orchestrator ───────────────────────────────────────────────────────────
 
 def orchestrate(goal: str, num_workers: int = 5, model: str = None,
-                mix: bool = False, json_mode: bool = False) -> dict:
+                mix: bool = False, json_mode: bool = False,
+                top_angle: str = "") -> dict:
     # Build worker configs
     workers = []
     for i in range(num_workers):
         if mix:
             member = TEAM[i % len(TEAM)]
             w_model = member["model"]
+            angle = member["angle"]
+            if top_angle:
+                angle = f"{top_angle} — {angle}"
             workers.append({
                 "name": member["name"],
                 "model": w_model,
-                "angle": member["angle"],
+                "angle": angle,
             })
         else:
             m = model or DEFAULT_WORKER
+            angle = ANGLES[i % len(ANGLES)]
+            if top_angle:
+                angle = f"{top_angle} — {angle}"
             workers.append({
                 "name": f"Worker {i+1}",
                 "model": m,
-                "angle": ANGLES[i % len(ANGLES)],
+                "angle": angle,
             })
 
     models_used = list(set(w["model"] for w in workers))
@@ -471,7 +478,10 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
 def main():
     global CONFIG, WORKER_MODELS, MODEL_LIST, DEFAULT_WORKER, TEAM, ANGLES, FALLBACK_MODELS
     ap = argparse.ArgumentParser(description="Swarm v2 with web search and mixed models")
-    ap.add_argument("--goal", required=True)
+    ap.add_argument("--goal", default=None,
+                    help="Research question (optional if config file has 'goal' field)")
+    ap.add_argument("--angle", default=None,
+                    help="Optional top-level angle to prepend to all workers (or from config)")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--model", default=None,
                     help=f"Model for uniform mode: {', '.join(MODEL_LIST)}")
@@ -509,11 +519,17 @@ def main():
             ANGLES = CONFIG.get("angles", []) or ANGLES
             FALLBACK_MODELS = CONFIG.get("fallback_models", []) or FALLBACK_MODELS
 
+            # Pull goal and angle from config if not set via CLI
+            if not args.goal:
+                args.goal = CONFIG.get("goal", "")
+            if not args.angle:
+                args.angle = CONFIG.get("angle", "")
+
     if not args.goal.strip():
         print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!")
         sys.exit(1)
 
-    result = orchestrate(args.goal, args.workers, model, args.mix, args.json)
+    result = orchestrate(args.goal, args.workers, model, args.mix, args.json, args.angle or "")
 
     out = sys.stderr if args.json else sys.stdout
     print(f"\n{'─'*55}", file=out)
@@ -532,6 +548,25 @@ def main():
         print(f"\n{'─'*55}")
         print(f"  Swarm done! I'll synthesize these into a unified take.")
         print(f"{'─'*55}")
+
+    # Auto-save full research to a markdown file
+    safe_name = re.sub(r'[^a-zA-Z0-9]+', '_', args.goal.strip()[:60]).strip('_')
+    if not safe_name:
+        safe_name = "swarm_output"
+    filename = f"swarm_{safe_name}_{int(time.time())}.md"
+    with open(filename, "w") as f:
+        f.write(f"# Swarm Research: {args.goal}\n\n")
+        f.write(f"**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}  \n")
+        f.write(f"**Wall time:** {result['wall_time_s']}s  \n")
+        f.write(f"**Workers:** {result['num_workers']}  \n")
+        f.write(f"**Models:** {', '.join(result['models'])}\n\n")
+        f.write("---\n\n")
+        for w in result["workers"]:
+            f.write(f"## {w['name']} ({w['model']})\n\n")
+            f.write(f"**Duration:** {w['duration_s']}s | **Searches:** {w['search_rounds']} | **Chars:** {len(w['response'])}\n\n")
+            f.write(f"{w['response']}\n\n")
+            f.write("---\n\n")
+    print(f"\n  💾 Saved to {filename}", file=out)
 
 
 if __name__ == "__main__":
