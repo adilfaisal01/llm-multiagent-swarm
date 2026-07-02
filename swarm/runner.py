@@ -26,6 +26,7 @@ def run_swarm(
     config_path: str | None = None,
     json_mode: bool = False,
     ollama_host: str | None = None,
+    synthesize: bool = True,
 ) -> dict:
     """Run the swarm and return results.
 
@@ -93,6 +94,8 @@ def run_swarm(
         default_worker=defaults["default_worker"],
         fallback_models=defaults["fallback_models"],
         ollama_base=ollama_base,
+        synthesize=synthesize,
+        synthesis_model=defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud"),
     )
 
     return result

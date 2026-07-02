@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .scratchpad import Scratchpad
 from . import tools
 from .worker import run_worker
+from .synthesis import synthesize as run_synthesis
 
 
 def orchestrate(goal: str, num_workers: int = 5, model: str = None,
@@ -23,7 +24,9 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
                 team: list = None, angles: list = None,
                 default_worker: str = None,
                 fallback_models: list = None,
-                ollama_base: str = "http://localhost:11434") -> dict:
+                ollama_base: str = "http://localhost:11434",
+                synthesize: bool = True,
+                synthesis_model: str | None = None) -> dict:
     """Run the swarm and return results with scratchpad data."""
     if team is None:
         team = []
@@ -98,7 +101,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     tools._SCRATCHPAD.close()
     tools._SCRATCHPAD = None
 
-    return {
+    result = {
         "goal": goal,
         "num_workers": num_workers,
         "models": models_used,
@@ -110,3 +113,24 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             "sources": scratch_sources,
         },
     }
+
+    # ─── Orchestrator synthesis: the boss reads the room ───
+    if synthesize:
+        syn_model = synthesis_model or (default_worker or "gpt-oss:120b-cloud")
+        print(f"\n  🎯 Orchestrator synthesizing... (model: {syn_model.split(':')[0]})", file=out)
+        syn_start = time.time()
+        synthesis_text = run_synthesis(goal, result, model=syn_model, ollama_base=ollama_base)
+        syn_elapsed = round(time.time() - syn_start, 1)
+        result["synthesis"] = synthesis_text
+        result["synthesis_model"] = syn_model
+        result["synthesis_time_s"] = syn_elapsed
+        if not synthesis_text.startswith("[Synthesis error"):
+            print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars)", file=out)
+        else:
+            print(f"  ⚠️  Orchestrator synthesis failed ({syn_elapsed}s)", file=out)
+    else:
+        result["synthesis"] = ""
+        result["synthesis_model"] = ""
+        result["synthesis_time_s"] = 0
+
+    return result

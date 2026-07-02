@@ -14,6 +14,17 @@ def print_summary(result: dict, *, file=None):
     """Print a human-readable summary of swarm results to a stream."""
     out = file or sys.stdout
 
+    # Synthesis first — the boss's take
+    synthesis = result.get("synthesis", "")
+    if synthesis and not synthesis.startswith("[Synthesis error"):
+        print(f"\n{'─'*55}", file=out)
+        print(f"  🎯 ORCHESTRATOR'S TAKE", file=out)
+        print(f"{'─'*55}", file=out)
+        print(f"  {synthesis[:1200]}", file=out)
+        if len(synthesis) > 1200:
+            print(f"  ... ({len(synthesis)} chars total)", file=out)
+        print("", file=out)
+
     print(f"\n{'─'*55}", file=out)
     print(f"  ALL WORKERS DONE — {result['wall_time_s']}s total", file=out)
     print(f"{'─'*55}", file=out)
@@ -60,10 +71,19 @@ def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
         f.write(f"**Wall time:** {result['wall_time_s']}s  \n")
         f.write(f"**Workers:** {result['num_workers']}  \n")
         f.write(f"**Models:** {', '.join(result['models'])}\n\n")
+
+        # Orchestrator synthesis at the top of the file
+        synthesis = result.get("synthesis", "")
+        if synthesis and not synthesis.startswith("[Synthesis error"):
+            f.write("---\n\n")
+            f.write("## 🎯 Orchestrator's Take\n\n")
+            f.write(f"{synthesis}\n\n")
+
         f.write("---\n\n")
+        f.write("## Raw Worker Reports\n\n")
 
         for w in result["workers"]:
-            f.write(f"## {w['name']} ({w['model']})\n\n")
+            f.write(f"### {w['name']} ({w['model']})\n\n")
             f.write(f"**Duration:** {w['duration_s']}s | **Searches:** {w['search_rounds']} | **Chars:** {len(w['response'])}\n\n")
             f.write(f"{w['response']}\n\n")
             f.write("---\n\n")

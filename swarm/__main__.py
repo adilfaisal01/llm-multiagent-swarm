@@ -34,6 +34,10 @@ def main():
     ap.add_argument("--config", default=None,
                     help="Path to JSON config file (default: swarm_config.json)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--synthesize", action="store_true", default=True,
+                    help="Orchestrator synthesizes all worker reports into a unified answer")
+    ap.add_argument("--no-synthesize", action="store_false", dest="synthesize",
+                    help="Skip the synthesis step")
     args = ap.parse_args()
 
     # Run the swarm via the library entry point
@@ -46,6 +50,7 @@ def main():
         angle=args.angle,
         config_path=args.config,
         json_mode=args.json,
+        synthesize=args.synthesize,
     )
 
     # Output
