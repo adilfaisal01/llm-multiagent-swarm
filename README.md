@@ -49,8 +49,19 @@ All config is via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
-| `SEARXNG_URL` | `http://localhost:8080` | SearXNG search endpoint |
-| `SEARXNG_TIMEOUT` | `15` | Timeout for search/extract calls |
+| `SEARCH_BACKEND` | `searxng` | Search engine: `searxng`, `ddgs`, or `google` |
+| `SEARXNG_URL` | `http://localhost:8080` | SearXNG endpoint (only for `searxng` backend) |
+| `SEARCH_API_KEY` | `""` | API key (required for `google` backend) |
+| `GOOGLE_CX` | `""` | Google Custom Search CX ID (only for `google` backend) |
+| `SEARCH_TIMEOUT` | `15` | Timeout for search/extract calls in seconds |
+
+### Search backends
+
+| Backend | Auth needed | Notes |
+|---------|-------------|-------|
+| `searxng` | No (self-hosted) | Default. Point `SEARXNG_URL` at your instance. |
+| `ddgs` | No | DuckDuckGo HTML scraping. No API key, no setup. Rate limits may apply. |
+| `google` | `SEARCH_API_KEY` + `GOOGLE_CX` | Google Custom Search JSON API. 100 free queries/day. |
 
 ## Available models
 
