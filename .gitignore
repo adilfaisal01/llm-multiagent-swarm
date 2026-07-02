@@ -31,3 +31,9 @@ Thumbs.db
 
 # Environment
 .env
+
+# Auto-generated test results (per-commit)
+test-results/
+
+# Stray swarm output files
+swarm_*.md
