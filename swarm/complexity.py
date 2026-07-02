@@ -23,8 +23,10 @@ def estimate_complexity(goal: str) -> int:
     if len(goal.split()) > 4:
         score += 1
 
-    # Reasoning depth
-    if re.search(r'\b(why|how|explain|analyze|describe|implications?|impact|analysis|effects?|significance|meaning|purpose)\b', goal, re.IGNORECASE):
+    # Reasoning depth — includes evaluative/critical analysis patterns
+    if re.search(r'\b(why|how|explain|analyze|describe|implications?|impact|analysis|effects?|significance|meaning|purpose|'
+                 r'validity|evaluate|assessment?|critique|criteria|evidence|justif(y|ication)|'
+                 r'merits|drawbacks|pros|cons|strengths|weaknesses)\b', goal, re.IGNORECASE):
         score += 1
 
     # Comparison / sub-topics
@@ -49,7 +51,8 @@ def estimate_complexity(goal: str) -> int:
 
     # Multi-dimensional (mentions 2+ of history/future/technical/economic/etc)
     dim_pattern = r'\b(history|origins|timeline|future|trends?|technical|'
-    dim_pattern += r'economic|financial|political|social|cultural|practical|theoretical)\b'
+    dim_pattern += r'economic|financial|political|social|cultural|practical|theoretical|'
+    dim_pattern += r'industrial|revolution|consequences|disaster|environmental|humanity)\b'
     dim_matches = re.findall(dim_pattern, goal, re.IGNORECASE)
     if len(set(m.lower() for m in dim_matches)) >= 2:
         score += 1
