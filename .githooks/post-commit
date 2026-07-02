@@ -1,9 +1,9 @@
 #!/bin/bash
-# Post-commit hook: runs chaos monkey + benchmark on every commit.
+# Post-commit hook: runs chaos monkey + benchmark asynchronously.
 # Saves results to test-results/<commit-hash>/ for traceability.
+# Git returns instantly — tests run in the background.
 #
-# To install: ln -sf ../../post-commit .git/hooks/post-commit
-# (or just copy this file there)
+# To install: ln -sf ../../.githooks/post-commit .git/hooks/post-commit
 
 set -e
 
@@ -12,48 +12,47 @@ cd "$REPO_DIR"
 
 COMMIT_HASH=$(git rev-parse --short HEAD)
 RESULTS_DIR="test-results/$COMMIT_HASH"
-mkdir -p "$RESULTS_DIR"
 
-echo "═══════════════════════════════════════════════════" | tee -a "$RESULTS_DIR/run.log"
-echo "  🔬 POST-COMMIT: Chaos Monkey + Benchmark" | tee -a "$RESULTS_DIR/run.log"
-echo "  Commit: $COMMIT_HASH" | tee -a "$RESULTS_DIR/run.log"
-echo "  Date:   $(date)" | tee -a "$RESULTS_DIR/run.log"
-echo "═══════════════════════════════════════════════════" | tee -a "$RESULTS_DIR/run.log"
+# Spawn tests in background so git returns instantly
+nohup bash -c "
+mkdir -p '$RESULTS_DIR'
+
+echo '═══════════════════════════════════════════════════' >> '$RESULTS_DIR/run.log'
+echo '  🔬 POST-COMMIT: Chaos Monkey + Benchmark' >> '$RESULTS_DIR/run.log'
+echo '  Commit: $COMMIT_HASH' >> '$RESULTS_DIR/run.log'
+echo '  Date:   $(date)' >> '$RESULTS_DIR/run.log'
+echo '═══════════════════════════════════════════════════' >> '$RESULTS_DIR/run.log'
 
 # ─── 1. Chaos Monkey ─────────────────────────────────────
-echo "" | tee -a "$RESULTS_DIR/run.log"
-echo "─── Running chaos monkey tests ───" | tee -a "$RESULTS_DIR/run.log"
-
-CHAOS_START=$(date +%s)
-timeout 480 bash chaos_monkey.sh > "$RESULTS_DIR/chaos_monkey.txt" 2>&1 || true
-CHAOS_END=$(date +%s)
-CHAOS_DURATION=$((CHAOS_END - CHAOS_START))
-
-# Count passes/fails from output
-CHAOS_PASS=$(grep -c 'OK' "$RESULTS_DIR/chaos_monkey.txt" || true)
-CHAOS_FAIL=$(grep -c 'ERR' "$RESULTS_DIR/chaos_monkey.txt" || true)
-echo "  Chaos monkey: done (${CHAOS_DURATION}s, ~${CHAOS_PASS} pass)" | tee -a "$RESULTS_DIR/run.log"
+echo '' >> '$RESULTS_DIR/run.log'
+echo '─── Running chaos monkey tests ───' >> '$RESULTS_DIR/run.log'
+CHAOS_START=\$(date +%s)
+timeout 480 bash chaos_monkey.sh > '$RESULTS_DIR/chaos_monkey.txt' 2>&1 || true
+CHAOS_END=\$(date +%s)
+CHAOS_DURATION=\$((CHAOS_END - CHAOS_START))
+CHAOS_PASS=\$(grep -c 'OK' '$RESULTS_DIR/chaos_monkey.txt' || true)
+echo '  Chaos monkey: done (\${CHAOS_DURATION}s, ~\${CHAOS_PASS} pass)' >> '$RESULTS_DIR/run.log'
 
 # ─── 2. Benchmark ─────────────────────────────────────────
-echo "" | tee -a "$RESULTS_DIR/run.log"
-echo "─── Running benchmark ───" | tee -a "$RESULTS_DIR/run.log"
-
-BENCH_START=$(date +%s)
-timeout 300 python3 benchmark.py > "$RESULTS_DIR/benchmark.txt" 2>&1 || true
-BENCH_END=$(date +%s)
-BENCH_DURATION=$((BENCH_END - BENCH_START))
-
-# Extract speedup from benchmark output
-SPEEDUP=$(grep -oP 'Speedup:\s+\K[\d.]+(?=x)' "$RESULTS_DIR/benchmark.txt" | tail -1 || echo "?")
-echo "  Benchmark: done (${BENCH_DURATION}s, speedup: ${SPEEDUP}x)" | tee -a "$RESULTS_DIR/run.log"
+echo '' >> '$RESULTS_DIR/run.log'
+echo '─── Running benchmark ───' >> '$RESULTS_DIR/run.log'
+BENCH_START=\$(date +%s)
+timeout 300 python3 benchmark.py > '$RESULTS_DIR/benchmark.txt' 2>&1 || true
+BENCH_END=\$(date +%s)
+BENCH_DURATION=\$((BENCH_END - BENCH_START))
+SPEEDUP=\$(grep -oP 'Speedup:\s+\K[\d.]+(?=x)' '$RESULTS_DIR/benchmark.txt' | tail -1 || echo '?')
+echo '  Benchmark: done (\${BENCH_DURATION}s, speedup: \${SPEEDUP}x)' >> '$RESULTS_DIR/run.log'
 
 # ─── 3. Clean up stray test .md files ────────────────────
 rm -f swarm_*.md
 
 # ─── 4. Summary ──────────────────────────────────────────
-echo "" | tee -a "$RESULTS_DIR/run.log"
-echo "═══════════════════════════════════════════════════" | tee -a "$RESULTS_DIR/run.log"
-echo "  ✅ Results saved to: $RESULTS_DIR/" | tee -a "$RESULTS_DIR/run.log"
-echo "     chaos_monkey.txt — done (${CHAOS_DURATION}s)" | tee -a "$RESULTS_DIR/run.log"
-echo "     benchmark.txt    — done (${BENCH_DURATION}s, ${SPEEDUP}x)" | tee -a "$RESULTS_DIR/run.log"
-echo "═══════════════════════════════════════════════════" | tee -a "$RESULTS_DIR/run.log"
+echo '' >> '$RESULTS_DIR/run.log'
+echo '═══════════════════════════════════════════════════' >> '$RESULTS_DIR/run.log'
+echo '  ✅ Results saved to: $RESULTS_DIR/' >> '$RESULTS_DIR/run.log'
+echo '     chaos_monkey.txt — done (\${CHAOS_DURATION}s)' >> '$RESULTS_DIR/run.log'
+echo '     benchmark.txt    — done (\${BENCH_DURATION}s, \${SPEEDUP}x)' >> '$RESULTS_DIR/run.log'
+echo '═══════════════════════════════════════════════════' >> '$RESULTS_DIR/run.log'
+" > /dev/null 2>&1 &
+
+disown
