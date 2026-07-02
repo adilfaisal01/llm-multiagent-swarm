@@ -49,16 +49,15 @@ def main():
     )
 
     # Output
-    out = sys.stderr if args.json else sys.stdout
-
     if args.json:
-        print(format_json(result), file=out)
+        # JSON goes to stdout so piping works (e.g. | python3 -c "import json...")
+        print(format_json(result))
     else:
-        print_summary(result, file=out)
-
-    # Auto-save to markdown
-    filepath = save_markdown(result, result["goal"])
-    print(f"\n  💾 Saved to {filepath}", file=out)
+        # Human-readable goes to stdout
+        print_summary(result)
+        # Auto-save to markdown
+        filepath = save_markdown(result, result["goal"])
+        print(f"\n  💾 Saved to {filepath}")
 
 
 if __name__ == "__main__":

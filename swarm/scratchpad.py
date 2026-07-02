@@ -11,7 +11,7 @@ class Scratchpad:
     """Temporary SQLite database in RAM for agents to dump raw findings."""
 
     def __init__(self):
-        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+        self._conn = sqlite3.connect(":memory:", check_same_thread=False, isolation_level=None)
         self._conn.execute("""
             CREATE TABLE findings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
