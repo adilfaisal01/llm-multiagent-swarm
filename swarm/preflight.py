@@ -16,7 +16,7 @@ import urllib.request
 # Available tool bundles and what they do — the LLM uses this to assign them
 BUNDLE_INFO = {
     "vision": "Has read_image tool — use for questions with image attachments (.png/.jpg). Best model: gemma4:31b-cloud (multimodal).",
-    "code": "Has python_exec tool — use for calculations, data processing, running code. Best model: deepseek-v4-flash or qwen3.5.",
+    "code": "Has python_exec tool — use for calculations, data processing, running code. Best model: deepseek-v4-flash.",
     "files": "Has read_file tool — use for .docx, .xlsx, .csv, .txt, .json, .xml attachments. Best model: gpt-oss:120b-cloud.",
     "search": "Web search only — use for simple fact lookups. Fast model: nemotron-3-nano:30b-cloud.",
     "default": "Web search + scratchpad + web_extract — use for general research. Best model: gpt-oss:120b-cloud.",

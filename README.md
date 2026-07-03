@@ -253,7 +253,7 @@ In `--mix` mode, each worker gets a different model and named identity:
 |------|-------|-------|
 | **Vera** | gpt-oss | Origins & history |
 | **Cyrus** | nemotron | Money & players |
-| **Romy** | gemma | Implications & future |
+| **Romy** | gemma | Implications & future (vision specialist) |
 | **Ash** | deepseek | Controversies |
 | **Zara** | gpt-oss | Technical details |
 
