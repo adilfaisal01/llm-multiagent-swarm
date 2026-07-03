@@ -22,12 +22,11 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
                          │  • Parses --goal, --mix, --config  │
                          │  • Loads swarm_config.json         │
                          │  • Estimates complexity (1-5)      │
-                         │  • Preflight: analyzes question    │
-                         │  • Assigns tool bundles per worker │
-                         │  • Pre-reads attached files        │
-                         │  • Spawns workers in parallel      │
-                         │  • Reads scratchpad after workers   │
-                         │  • Destroys scratchpad, saves .md   │
+                         │  • Preflight: LLM analyzes question│
+                         │  • LLM assigns tool bundles+mode   │
+                         │  • Spawns workers (parallel|pipeline)│
+                         │  • Reads scratchpad after workers  │
+                         │  • Destroys scratchpad, saves .md  │
                          └──────┬──────┬──────┬──────┬───────┘
                                 │      │      │      │
           ┌─────────────────────┼──────┼──────┼──────┼─────────────────────┐
@@ -69,7 +68,7 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
                          └─────────────────────────────────────┘
 ```
 
-Each worker is an independent Ollama model with a **tool bundle** assigned by preflight. The orchestrator analyzes the question, determines what tools are needed, and gives each worker tailored capabilities. Workers can search the web, read files, analyze images, and run Python code — all in parallel via `ThreadPoolExecutor`. Every tool call result is automatically logged to the scratchpad. The orchestrator collects everything, optionally synthesizes the findings, and saves the full output to a timestamped `.md` file.
+Each worker is an independent Ollama model with a **tool bundle** assigned by the preflight LLM. The orchestrator analyzes the question, determines what tools are needed, and gives each worker tailored capabilities. Workers can search the web, read files, analyze images, and run Python code — all in parallel via `ThreadPoolExecutor` or sequentially in pipeline mode when dependencies exist. Every tool call result is automatically logged to the scratchpad. The orchestrator collects everything, optionally synthesizes the findings, and saves the full output to a timestamped `.md` file.
 
 ## Quick start
 
@@ -95,8 +94,8 @@ python3 -m swarm --goal "Your question" --model qwen --workers 3
 # JSON output for programmatic use
 python3 -m swarm --goal "Your question" --mix --json
 
-# Legacy script (still works)
-python3 swarm2.py --goal "Your question" --mix
+# Demo version (original pre-modular research script)
+python3 -m demo-swarm --goal "Your question" --mix
 ```
 
 ## Complexity estimation (`--auto`)
@@ -129,7 +128,7 @@ Schema:
 
 ## Modular Tool System
 
-The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a self-contained module with a `TOOLS` list and optional `BUNDLES` list. Adding a new tool is just: create a file, extend `BaseTool`, export it.
+The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a self-contained module extending `BaseTool`. Adding a new tool is just: create a file, extend `BaseTool`, register it in `__init__.py`.
 
 ### Available tools
 
@@ -139,12 +138,12 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `web_extract` | Read content from a URL | all |
 | `scratchpad_add` | Log raw findings to the shared scratchpad | all |
 | `read_image` | Read text/numbers from images via Gemma4 vision | vision, files, all |
-| `read_file` | Read .txt, .csv, .json, .xml, .docx, .xlsx files | files, all |
+| `read_file` | Read .txt, .csv, .json, .xml, .xlsx files | files, all |
 | `python_exec` | Execute Python code for calculations/processing | code, all |
 
 ### Tool bundles
 
-Preflight assigns a tool bundle to each worker based on the question. Bundles are additive — specialty bundles include search + scratchpad + their unique tools.
+Preflight assigns a tool bundle to each worker based on the question. Bundles are **additive** — specialty bundles include search + scratchpad + their unique tools.
 
 | Bundle | Tools | When assigned |
 |--------|-------|--------------|
@@ -158,17 +157,33 @@ Preflight assigns a tool bundle to each worker based on the question. Bundles ar
 
 ### Preflight question analysis
 
-Before spawning workers, the orchestrator runs a **preflight** pass using the orchestrator model:
+Before spawning workers, the orchestrator runs a **preflight** pass using the orchestrator model (DeepSeek V4 Flash):
 
 1. **Classifies answer type**: number, name, phrase, date, or other
-2. **Detects file attachments**: Scans the goal for `.png`, `.jpg`, `.xlsx`, `.csv`, `.docx`, etc.
-3. **Assigns tool bundles**: Each worker gets a bundle matching their role (vision worker for images, code worker for computations)
-4. **Pre-loads file contents**: For image files, runs the Gemma4 vision model to extract text/numbers. For structured files, runs the file reader. Injects the extracted data directly into every worker's system prompt
-5. **Computes answers directly**: For number-type questions with preloaded data, the orchestrator computes the answer itself using Python (no flaky LLM workers needed for math)
+2. **Assigns tool bundles via LLM**: The model reasons about what tools each worker needs and assigns the right bundle (`vision` for images, `code` for calculations, `files` for spreadsheets, etc.)
+3. **Decides execution mode**: Outputs `parallel` or `pipeline` based on whether workers have sequential dependencies
+4. **Generates search strategies**: Each worker gets a specific, actionable plan tailored to the question
+5. **Injects file paths**: For file-based questions, the file path is injected into the worker prompt — workers are aggressively prompted to use their tools to read it (never guess)
 
-This means workers never need to "remember" to call `read_image` — the data is already right there in their context when they start.
+The key difference from the old system: **the LLM decides, not hardcoded rules**. No more preload hack where data was dumped into prompts — workers now use their tools properly.
 
-## Complexity estimation (`--auto`)
+### Pipeline mode
+
+For questions where workers have sequential dependencies, the preflight LLM can set `mode: pipeline`:
+
+```
+Mode: pipeline 🔗
+  Worker 0: vision (reads image, extracts numbers)
+  Worker 1: code (depends_on: 0) — takes numbers and computes
+  Worker 2: code (depends_on: 1) — verifies the computation
+```
+
+In pipeline mode:
+- Workers execute in dependency order
+- Each worker's output is injected into the next dependent worker's prompt
+- Non-dependent workers still run in parallel
+
+## Configuration
 
 All config is via environment variables or a JSON config file (`swarm_config.json` by default, or set via `SWARM_CONFIG` env var or `--config` flag).
 
@@ -224,8 +239,8 @@ See `swarm_config.json` for a full example.
 | `gpt-oss` | gpt-oss:120b-cloud | 120B | ~2-15s | Reliable, clean output |
 | `nemotron` | nemotron-3-nano:30b-cloud | 30B | ~0.5-15s | Fast, production-proven |
 | `qwen` | qwen3.5:397b-cloud | 397B | ~8-50s | Best reasoning, often answers from weights |
-| `gemma` | gemma4:31b-cloud | 31B | ~13-30s | Slower, pre-2026 cutoff |
-| `deepseek` | deepseek-v4-flash:cloud | ~158B | ~4-20s | Fast, used for complexity estimation |
+| `gemma` | gemma4:31b-cloud | 31B | ~13-30s | Multimodal (reads images) |
+| `deepseek` | deepseek-v4-flash:cloud | ~158B | ~4-20s | Fast, orchestrator model |
 | `ministral` | ministral-3:14b-cloud | 14B | ~4.5-20s | ⚠️ Being retired by Ollama Cloud |
 | `nemotron-super` | nemotron-3-super:cloud | 120B | ~1-20s | ⚠️ Buggy — may time out or return empty |
 
@@ -251,20 +266,21 @@ python3 -m swarm --goal "Your question" --mix --config my_team.json
 
 Ollama's `/api/chat` endpoint supports native function calling. The swarm:
 
-1. **Preflight** analyzes the question and assigns a tool bundle to each worker
-2. **Orchestrator pre-reads** any attached files and injects their contents into worker prompts
-3. Sends prompt + tool definitions (filtered by bundle) to each model
-4. Model responds with `tool_calls` (search query, image read, code exec) or content (final answer)
-5. Script executes the tool against the configured backend
-6. Feeds results back as a `role: "tool"` message
-7. Loop repeats up to 5 rounds until the model has enough info to answer
+1. **Preflight** analyzes the question via the orchestrator LLM, which assigns tool bundles + execution mode
+2. Injects file paths (not file contents) into worker prompts
+3. Aggressively prompts workers to use their tools (never guess, never write from memory)
+4. Sends prompt + tool definitions (filtered by bundle) to each model
+5. Model responds with `tool_calls` (search query, image read, code exec) or content (final answer)
+6. Script executes the tool against the configured backend
+7. Feeds results back as a `role: "tool"` message
+8. Loop repeats up to 5 rounds until the model has enough info to answer
 
 If a model exhausts all tool rounds without producing a final answer, the script:
 1. Sends a gentle "synthesize your findings" prompt
 2. If that fails, sends an aggressive "STOP SEARCHING. WRITE NOW." prompt
 3. If both fail, falls back to re-firing the question at a different model
 
-For **file-based questions** (images, spreadsheets, docs), the orchestrator can bypass the worker loop entirely and compute the answer directly from preloaded data — no flaky LLM tool calling needed.
+For **pipeline mode**, workers execute in stages: a vision worker reads an image, then a code worker computes from the extracted data. Previous worker output is injected into downstream workers' prompts.
 
 ### Smoke test
 
@@ -283,6 +299,23 @@ Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK
 |------|-----------|------------|
 | Sequential | 150.4s | 264.0s |
 | Parallel | 45.6s (3.3×) | 77.3s (3.4×) |
+
+## Demo / Research Version
+
+The original pre-modular swarm is preserved in `demo-swarm/` for reference, testing, and research:
+
+```bash
+python3 -m demo-swarm --goal "Your question" --mix
+```
+
+| Feature | Demo | Main |
+|---------|------|------|
+| Tool system | Monolithic `tools.py` | Modular registry |
+| Worker angles | Hardcoded (Origins, Money, Future...) | LLM-generated per question |
+| Tool bundles | None (all workers = search) | vision/code/files/search/default |
+| Execution mode | Parallel only | Parallel or pipeline |
+| File attachments | Not supported | Tool-based (workers read files) |
+| Preflight | None | LLM analyzes question + assigns bundles |
 
 ## Auto-Testing on Commit
 
@@ -322,8 +355,8 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 │   ├── __init__.py        # Public API: from swarm import run_swarm
 │   ├── __main__.py        # CLI entry point (thin wrapper)
 │   ├── runner.py          # Library entry point: run_swarm()
-│   ├── orchestrator.py    # Spawns workers, preloads files, manages scratchpad
-│   ├── preflight.py       # Question analysis + bundle assignment
+│   ├── orchestrator.py    # Spawns workers, manages scratchpad
+│   ├── preflight.py       # LLM-based question analysis + bundle assignment
 │   ├── worker.py          # Worker agent loop with tool access
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
@@ -340,21 +373,35 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 │       ├── scratchpad.py  # Log findings tool
 │       ├── vision.py      # Read images via Gemma4
 │       ├── python_exec.py # Execute Python code
-│       └── file_reader.py # Read .txt/.csv/.json/.docx/.xlsx
+│       └── file_reader.py # Read .txt/.csv/.json/.xlsx
+├── demo-swarm/            # Original research version (demo)
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── runner.py
+│   ├── orchestrator.py
+│   ├── worker.py
+│   ├── scratchpad.py
+│   ├── search.py
+│   ├── synthesis.py
+│   ├── config.py
+│   ├── complexity.py
+│   ├── output.py
+│   └── tools.py           # Monolithic tool file (pre-modular)
 ├── test_tools.py            # Tool smoke test (random files, all tool paths)
-├── swarm2.py                # Legacy monolith (preserved)
-├── swarm_config.json       # Configurable team, models, prompts
-├── swarm.py               # Minimal version (no web search)
-├── SCRATCHPAD.md           # Scratchpad architecture docs
-├── BENCHMARK.md            # Benchmark results
-├── benchmark.py            # Benchmark script (library-based)
-├── benchmark_hard.py       # Hard query benchmark (library-based)
-├── CHAOS_MONKEY_RESULTS.md # Chaos monkey test results
-├── AGENTS.md               # AI agent context file
-├── chaos_monkey.sh         # 15 chaos monkey tests
-├── test_queries.sh         # Test query runner
-├── setup-hooks.sh          # Git hook installer
-├── .githooks/              # Git hooks directory
-│   └── post-commit        # Auto-runs tests on every commit
-└── README.md               # This file
+├── swarm2.py                # Legacy monolith (preserved, pre-demo)
+├── swarm_config.json        # Configurable team, models, prompts
+├── swarm.py                 # Minimal version (no web search)
+├── gaia_eval.py             # GAIA benchmark eval harness
+├── SCRATCHPAD.md            # Scratchpad architecture docs
+├── BENCHMARK.md             # Benchmark results
+├── benchmark.py             # Benchmark script (library-based)
+├── benchmark_hard.py        # Hard query benchmark (library-based)
+├── CHAOS_MONKEY_RESULTS.md  # Chaos monkey test results
+├── AGENTS.md                # AI agent context file
+├── chaos_monkey.sh          # 15 chaos monkey tests
+├── test_queries.sh          # Test query runner
+├── setup-hooks.sh           # Git hook installer
+├── .githooks/               # Git hooks directory
+│   └── post-commit         # Auto-runs tests on every commit
+└── README.md                # This file
 ```
