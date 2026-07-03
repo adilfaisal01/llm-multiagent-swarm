@@ -3,9 +3,10 @@
 The orchestrator:
 1. Creates a write-only scratchpad
 2. Builds worker configs from team/angles
-3. Spawns workers in a ThreadPoolExecutor
-4. Collects results and scratchpad data
-5. Destroys the scratchpad
+3. Preflight: analyzes question → assigns tool bundles via LLM
+4. Spawns workers (parallel or pipeline mode based on dependencies)
+5. Collects results and scratchpad data
+6. Destroys the scratchpad
 """
 
 import os
@@ -19,11 +20,6 @@ from .worker import run_worker
 from .synthesis import synthesize as run_synthesis
 from .preflight import analyze_question, build_worker_prompt
 from .tools import get_registry
-
-
-# Tool bundle assignments based on question characteristics
-# Preflight can override these per-question
-TOOL_BUNDLES = ["default", "default", "code", "vision", "files"]
 
 
 def _get_tool_names_for_bundle(bundle_name: str) -> list[str]:
@@ -40,166 +36,81 @@ def _extract_file_path(goal: str) -> str | None:
     return None
 
 
-def _preload_file_content(file_path: str) -> str | None:
-    """Pre-read a file and return its content. Supports images (via Gemma4 vision) and text files."""
-    if not file_path or not os.path.exists(file_path):
-        return None
-
-    ext = os.path.splitext(file_path)[1].lower()
-    # Image files: use vision model to extract text
-    if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ppm"):
-        try:
-            from .tools.vision import ReadImage
-            tool = ReadImage()
-            result = tool.run({
-                "path": file_path,
-                "question": (
-                    "Read ALL numbers in this image. Group them by color: "
-                    "list RED numbers separately and GREEN numbers separately. "
-                    "Be precise and complete. Include every single number."
-                )
-            })
-            if result and not result.startswith("[ReadImage error"):
-                print(f"  [PRELOAD] Read image ({os.path.basename(file_path)}): {len(result)} chars extracted", file=sys.stderr)
-                return result
-        except Exception as e:
-            print(f"  [PRELOAD] Vision failed for {file_path}: {e}", file=sys.stderr)
-            return None
-
-    # Text-based files: use file reader
-    if ext in (".txt", ".csv", ".json", ".jsonld", ".xml", ".py", ".md", ".docx", ".xlsx"):
-        try:
-            from .tools.file_reader import ReadFile
-            tool = ReadFile()
-            result = tool.run({"path": file_path, "max_chars": 5000})
-            if result and not result.startswith("[ReadFile error"):
-                print(f"  [PRELOAD] Read file ({os.path.basename(file_path)}): {len(result)} chars", file=sys.stderr)
-                return result
-        except Exception as e:
-            print(f"  [PRELOAD] File read failed for {file_path}: {e}", file=sys.stderr)
-            return None
-
-    return None
-
-
 def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) -> str:
-    """Pre-read the file and inject its contents directly into the prompt."""
-    # Only preload for workers that have the capability to use the data
-    if file_path and tool_bundle in ("vision", "files", "code", "default"):
-        content = _preload_file_content(file_path)
-        if content:
-            prompt += f"\n\n### ATTACHED FILE CONTENT ({os.path.basename(file_path)}):\n{content}\n\n"
+    """Tell the worker about the file — let them use their tools to read it."""
+    if file_path and tool_bundle in ("vision", "files", "code"):
+        basename = os.path.basename(file_path)
+        prompt += (
+            f"\n\n### ATTACHED FILE\n"
+            f"Path: {file_path}\n"
+            f"Name: {basename}\n"
+            f"You MUST use your available tools to read this file.\n"
+            f"Do not guess the content. Do not write from memory. Use the tool.\n"
+        )
     return prompt
 
 
-def _has_image_reference(goal: str) -> bool:
-    """Check if the goal references image files."""
-    goal_lower = goal.lower()
-    return any(ext in goal_lower for ext in [".png", ".jpg", ".jpeg", ".gif", ".bmp", "image"])
+def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out):
+    """Run all workers in parallel via ThreadPoolExecutor."""
+    results = []
+    with ThreadPoolExecutor(max_workers=len(workers)) as ex:
+        futures = {
+            ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
+                      w["angle"], w.get("prompt", ""),
+                      ollama_base, fallback_models, w.get("tool_bundle", "default")): i
+            for i, w in enumerate(workers)
+        }
+        for f in as_completed(futures):
+            r = f.result()
+            results.append(r)
+            ok = "OK" if r["status"] == "ok" else "ERR"
+            print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
+                  f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
+                  f"{len(r['response'])} chars", file=out)
+    results.sort(key=lambda x: x["worker_id"])
+    return results
 
 
-def _has_file_reference(goal: str) -> bool:
-    """Check if the goal references attached files."""
-    goal_lower = goal.lower()
-    return any(ext in goal_lower for ext in [
-        ".xlsx", ".docx", ".csv", ".json", ".xml", ".jsonld",
-        ".txt", ".pdb", ".py", ".mp3", ".zip", ".pptx", ".pdf",
-        "attached file", "attached spreadsheet", "attached document",
-        "attached image", "attached",
-    ])
+def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out):
+    """Run workers sequentially, passing previous outputs down the chain."""
+    results = []
+    completed = {}
+    remaining = list(range(len(workers)))
 
+    while remaining:
+        for i in list(remaining):
+            dep = depends_on[i] if i < len(depends_on) else None
+            if dep is None or dep in completed:
+                w = workers[i]
+                prompt = w["prompt"]
 
-def _get_bundle_assignments(answer_type: str, goal: str, num_workers: int) -> list[str]:
-    """Get tool bundle assignments for all workers based on question analysis."""
-    has_image = _has_image_reference(goal)
-    has_file = _has_file_reference(goal)
+                # Inject previous worker's output if this worker depends on it
+                if dep is not None and dep in completed:
+                    dep_result = completed[dep]
+                    dep_output = dep_result.get("response", "")
+                    prompt += (
+                        f"\n\n### PREVIOUS WORKER OUTPUT ({dep_result['name']}):\n"
+                        f"{dep_output[:3000]}\n\n"
+                        f"Use this data for your assigned task.\n"
+                    )
+                    w["prompt"] = prompt
 
-    if answer_type in ("number",):
-        if has_image:
-            bundles = ["vision", "code", "default", "files", "vision"]
-        elif has_file:
-            bundles = ["files", "code", "default", "files", "default"]
-        else:
-            bundles = ["default", "code", "default", "files", "vision"]
-    elif answer_type in ("name", "phrase"):
-        if has_image:
-            bundles = ["vision", "default", "search", "files", "default"]
-        elif has_file:
-            bundles = ["files", "default", "search", "default", "default"]
-        else:
-            bundles = ["default", "default", "search", "files", "files"]
-    elif answer_type in ("date",):
-        bundles = ["default", "default", "code", "default", "default"]
-    else:
-        if has_image:
-            bundles = ["vision", "default", "code", "files", "default"]
-        elif has_file:
-            bundles = ["files", "default", "code", "default", "default"]
-        else:
-            bundles = ["default", "default", "code", "vision", "files"]
+                print(f"  ▶️  Running {w['name']} (bundle: {w['tool_bundle']}, depends_on: {dep})...", file=out)
+                r = run_worker(
+                    i + 1, goal, w["name"], w["model"],
+                    w["angle"], w["prompt"],
+                    ollama_base, fallback_models, w.get("tool_bundle", "default"),
+                )
+                results.append(r)
+                completed[i] = r
+                remaining.remove(i)
+                ok = "OK" if r["status"] == "ok" else "ERR"
+                print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
+                      f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
+                      f"{len(r['response'])} chars", file=out)
 
-    # Pad/trim to match num_workers
-    while len(bundles) < num_workers:
-        bundles.append("default")
-    return bundles[:num_workers]
-
-
-def _compute_answer_from_data(goal: str, file_content: str, file_path: str) -> str | None:
-    """Compute an answer from preloaded file data using direct Python (not sandboxed).
-
-    This runs ONLY when we have a file attachment with extractable data and
-    the answer type is numeric. Bypasses the worker LLM flakiness.
-    """
-    import math, re
-
-    lines = []
-
-    # Try to extract red and green numbers by splitting content into sections
-    # Format: **RED numbers:**\n24, 74, ...\n\n**GREEN numbers:**\n39, 29, ...
-    sections = re.split(r'\n\s*\n', file_content.strip())
-    red_nums = []
-    green_nums = []
-
-    for section in sections:
-        if re.search(r'\bRED\b', section, re.IGNORECASE):
-            # Extract all numbers from this section
-            red_nums = [int(x) for x in re.findall(r'\d+', section)]
-        elif re.search(r'\bGREEN\b', section, re.IGNORECASE):
-            green_nums = [int(x) for x in re.findall(r'\d+', section)]
-
-    if red_nums and green_nums:
-        lines.append(f"Red numbers ({len(red_nums)}): {red_nums}")
-        lines.append(f"Green numbers ({len(green_nums)}): {green_nums}")
-
-        # Population std dev of red (divide by N)
-        red_mean = sum(red_nums) / len(red_nums)
-        red_pop_var = sum((x - red_mean)**2 for x in red_nums) / len(red_nums)
-        red_pop_std = math.sqrt(red_pop_var)
-
-        # Sample std dev of green (divide by N-1)
-        green_mean = sum(green_nums) / len(green_nums)
-        green_samp_var = sum((x - green_mean)**2 for x in green_nums) / (len(green_nums) - 1)
-        green_samp_std = math.sqrt(green_samp_var)
-
-        avg = (red_pop_std + green_samp_std) / 2
-        lines.append(f"Red population std dev: {red_pop_std:.4f}")
-        lines.append(f"Green sample std dev: {green_samp_std:.4f}")
-        lines.append(f"Average: {avg:.4f}")
-    else:
-        all_nums = [int(x) for x in re.findall(r'\d+', file_content)]
-        lines.append(f"All numbers ({len(all_nums)}): {all_nums}")
-        if all_nums:
-            n = len(all_nums)
-            mean = sum(all_nums) / n
-            pop_var = sum((x - mean)**2 for x in all_nums) / n
-            pop_std = math.sqrt(pop_var)
-            samp_var = sum((x - mean)**2 for x in all_nums) / (n - 1) if n > 1 else 0
-            samp_std = math.sqrt(samp_var)
-            lines.append(f"Population std dev: {pop_std:.4f}")
-            lines.append(f"Sample std dev: {samp_std:.4f}")
-            lines.append(f"Average: {(pop_std + samp_std) / 2:.4f}")
-
-    return "\n".join(lines)
+    results.sort(key=lambda x: x["worker_id"])
+    return results
 
 
 def orchestrate(goal: str, num_workers: int = 5, model: str = None,
@@ -229,11 +140,17 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base, num_workers=num_workers)
     strategies = preflight["strategies"]
     answer_type = preflight["answer_type"]
-    print(f"  [PREFLIGHT] Answer type: {answer_type} | {len(strategies)} strategies", file=sys.stderr)
-
-    # Determine tool bundles for each worker
-    bundle_assignments = _get_bundle_assignments(answer_type, goal, num_workers)
+    bundle_assignments = preflight.get("bundles", ["default"] * num_workers)
+    execution_mode = preflight.get("mode", "parallel")
+    depends_on = preflight.get("depends_on", [None] * num_workers)
+    print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | {len(strategies)} strategies", file=sys.stderr)
+    print(f"  [PREFLIGHT] Assigned bundles: {', '.join(bundle_assignments)}", file=sys.stderr)
+    if execution_mode == "pipeline":
+        deps_str = ", ".join(str(d) if d is not None else "-" for d in depends_on)
+        print(f"  [PREFLIGHT] Pipeline deps: {deps_str}", file=sys.stderr)
     file_path_in_goal = _extract_file_path(goal)
+    if file_path_in_goal:
+        print(f"  [PREFLIGHT] File attachment detected: {os.path.basename(file_path_in_goal)}", file=sys.stderr)
 
     # Build worker configs from preflight strategies
     workers = []
@@ -274,25 +191,17 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
         print(f"  Team: {', '.join(names)}", file=out)
     print(f"  Goal: {goal[:100]}", file=out)
     print(f"  Bundles: {', '.join(bundle_assignments)}", file=out)
+    if execution_mode == "pipeline":
+        print(f"  Mode: pipeline 🔗", file=out)
+    else:
+        print(f"  Mode: parallel ⚡", file=out)
     print(f"{'─'*55}\n", file=out)
 
-    results = []
-    with ThreadPoolExecutor(max_workers=num_workers) as ex:
-        futures = {
-            ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
-                      w["angle"], w.get("prompt", ""),
-                      ollama_base, fallback_models, w.get("tool_bundle", "default")): i
-            for i, w in enumerate(workers)
-        }
-        for f in as_completed(futures):
-            r = f.result()
-            results.append(r)
-            ok = "OK" if r["status"] == "ok" else "ERR"
-            print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
-                  f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
-                  f"{len(r['response'])} chars", file=out)
-
-    results.sort(key=lambda x: x["worker_id"])
+    # Execute workers in the right mode
+    if execution_mode == "pipeline":
+        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out)
+    else:
+        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out)
 
     # Collect scratchpad summary
     scratch_summary = sp.get_summary()
@@ -316,35 +225,18 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
 
     # ─── Orchestrator synthesis: the boss reads the room ───
     if synthesize:
-        # Check if we can pre-compute an answer from attached file data
-        computed_answer = None
-        if file_path_in_goal and answer_type == "number":
-            file_content = _preload_file_content(file_path_in_goal)
-            if file_content:
-                computed_answer = _compute_answer_from_data(goal, file_content, file_path_in_goal)
-
-        if computed_answer:
-            # Inject directly into results and synthesis
-            result["_computed"] = computed_answer
-            synthesis_text = computed_answer
-            syn_elapsed = 0
-            result["synthesis"] = synthesis_text
-            result["synthesis_model"] = "orchestrator"
-            result["synthesis_time_s"] = 0
-            print(f"\n  🔢 Orchestrator computed answer: {computed_answer[:200]}", file=out)
+        syn_model = synthesis_model or (default_worker or "gpt-oss:120b-cloud")
+        print(f"\n  🎯 Orchestrator synthesizing... (model: {syn_model.split(':')[0]})", file=out)
+        syn_start = time.time()
+        synthesis_text = run_synthesis(goal, result, model=syn_model, ollama_base=ollama_base)
+        syn_elapsed = round(time.time() - syn_start, 1)
+        result["synthesis"] = synthesis_text
+        result["synthesis_model"] = syn_model
+        result["synthesis_time_s"] = syn_elapsed
+        if not synthesis_text.startswith("[Synthesis error"):
+            print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars)", file=out)
         else:
-            syn_model = synthesis_model or (default_worker or "gpt-oss:120b-cloud")
-            print(f"\n  🎯 Orchestrator synthesizing... (model: {syn_model.split(':')[0]})", file=out)
-            syn_start = time.time()
-            synthesis_text = run_synthesis(goal, result, model=syn_model, ollama_base=ollama_base)
-            syn_elapsed = round(time.time() - syn_start, 1)
-            result["synthesis"] = synthesis_text
-            result["synthesis_model"] = syn_model
-            result["synthesis_time_s"] = syn_elapsed
-            if not synthesis_text.startswith("[Synthesis error"):
-                print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars)", file=out)
-            else:
-                print(f"  ⚠️  Orchestrator synthesis failed ({syn_elapsed}s)", file=out)
+            print(f"  ⚠️  Orchestrator synthesis failed ({syn_elapsed}s)", file=out)
     else:
         result["synthesis"] = ""
         result["synthesis_model"] = ""
