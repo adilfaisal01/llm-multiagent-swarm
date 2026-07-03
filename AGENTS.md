@@ -172,6 +172,9 @@ This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning
 - Don't describe the preload hack (it's removed — workers use tools now)
 - Don't suggest hardcoded bundle assignments (the LLM decides)
 
+### Future Ideas
+- **TUI dashboard**: `textual` or `rich`-based live pipeline view showing worker status, findings counter, elapsed time, per-worker logs. Like a devops dashboard but make it fashion.
+
 ## Common Pitfalls
 
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers
