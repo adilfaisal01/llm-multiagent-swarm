@@ -174,6 +174,7 @@ This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning
 
 ### Future Ideas
 - **TUI dashboard**: `textual` or `rich`-based live pipeline view showing worker status, findings counter, elapsed time, per-worker logs. Like a devops dashboard but make it fashion.
+- **MMLU benchmark (no tools)**: Strip the swarm of all tools (no search, no code exec, no vision) and run on MMLU. Tests whether multi-agent debate + synthesis beats single-model baselines on pure reasoning alone. Key question: does the orchestrate → synthesize pipeline add value beyond asking one good model?
 
 ## Common Pitfalls
 
