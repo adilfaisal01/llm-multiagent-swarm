@@ -2,9 +2,29 @@
 
 Agents WRITE only — they never read from it. The orchestrator reads
 after all agents finish to synthesize across all sources.
+
+Usage:
+    from swarm.scratchpad import get_scratchpad, set_scratchpad
+    sp = get_scratchpad()
+    if sp:
+        sp.add_finding(...)
 """
 
 import sqlite3
+
+# Global scratchpad instance, set by the orchestrator before spawning workers
+_GLOBAL_SCRATCHPAD = None
+
+
+def set_scratchpad(sp):
+    """Set the global scratchpad instance. Called by orchestrator before spawning workers."""
+    global _GLOBAL_SCRATCHPAD
+    _GLOBAL_SCRATCHPAD = sp
+
+
+def get_scratchpad():
+    """Get the current global scratchpad. Safe — returns None if not set."""
+    return _GLOBAL_SCRATCHPAD
 
 
 class Scratchpad:

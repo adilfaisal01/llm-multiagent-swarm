@@ -5,9 +5,11 @@
     "nemotron-super": "nemotron-3-super:cloud",
     "gpt-oss": "gpt-oss:120b-cloud",
     "gemma": "gemma4:31b-cloud",
+    "gemma-vision": "gemma4:31b-cloud",
     "qwen": "qwen3.5:397b-cloud",
     "deepseek": "deepseek-v4-flash:cloud",
-    "flash": "deepseek-v4-flash:cloud"
+    "flash": "deepseek-v4-flash:cloud",
+    "kimi": "kimi-k2.5:cloud"
   },
   "default_model": "gpt-oss",
   "team": [
