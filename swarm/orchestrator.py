@@ -47,7 +47,7 @@ def _preload_file_content(file_path: str) -> str | None:
 
     ext = os.path.splitext(file_path)[1].lower()
     # Image files: use vision model to extract text
-    if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp"):
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ppm"):
         try:
             from .tools.vision import ReadImage
             tool = ReadImage()

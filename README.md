@@ -22,6 +22,9 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
                          │  • Parses --goal, --mix, --config  │
                          │  • Loads swarm_config.json         │
                          │  • Estimates complexity (1-5)      │
+                         │  • Preflight: analyzes question    │
+                         │  • Assigns tool bundles per worker │
+                         │  • Pre-reads attached files        │
                          │  • Spawns workers in parallel      │
                          │  • Reads scratchpad after workers   │
                          │  • Destroys scratchpad, saves .md   │
@@ -35,34 +38,25 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
    │ gpt-oss   │        │ nemotron  │ │ qwen3.5   │ │ deepseek  │  │ gpt-oss   │
    │ 120B      │        │ 30B       │ │ 397B      │ │ flash     │  │ 120B      │
    │           │        │           │ │           │ │           │  │           │
-   │ ORIGINS   │        │  MONEY    │ │ FUTURE    │ │ CONTRO-   │  │ TECHNICAL │
-   │ & HISTORY │        │ & PLAYERS │ │ & IMPLI-  │ │ VERSIES   │  │ DETAILS   │
-   │           │        │           │ │ CATIONS   │ │           │  │           │
+   │vision     │        │  code     │ │ default   │ │ search    │  │ files     │
+   │ bundle    │        │  bundle   │ │ bundle    │ │ bundle    │  │ bundle    │
    └─────┬─────┘        └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  └─────┬─────┘
          │                    │             │             │              │
          └──────────┬─────────┘             │             │              │
-                     │                       │             │              │
-          ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
-          │                     TOOL RUNTIME                                     │
-          │                                                                      │
-          │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────────────┐  │
-          │  │   web_search()   │  │  web_extract()  │  │  Ollama /api/chat   │  │
-          │  │  ┌───────────┐  │  │  ┌───────────┐  │  │  ┌────────────────┐ │  │
-          │  │  │ SearXNG   │  │  │  │ Web pages │  │  │  │ Model response │ │  │
-          │  │  │ DuckDuckGo│  │  │  │ Articles  │  │  │  │ + tool_calls   │ │  │
-          │  │  │ Google    │  │  │  │ PDFs      │  │  │  │ + content      │ │  │
-          │  │  └───────────┘  │  │  └───────────┘  │  │  └────────────────┘ │  │
-          │  └─────────────────┘  └─────────────────┘  └──────────────────────┘  │
-          │                                                                      │
-          │  ┌────────────────────────────────────────────────────────────────┐  │
-          │  │   SCRATCHPAD (write-only RAM SQLite)                          │  │
-          │  │   • Agents auto-log every web_search + web_extract result     │  │
-          │  │   • Agents can also call scratchpad_add() manually             │  │
-          │  │   • Write-only from agent perspective — no context pollution  │  │
-          │  │   • Orchestrator reads after all workers finish               │  │
-          │  │   • DB destroyed after .md file is saved                      │  │
-          │  └────────────────────────────────────────────────────────────────┘  │
-          └──────────────────────────────────────────────────────────────────────┘
+                    │                       │             │              │
+         ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
+         │                  MODULAR TOOL REGISTRY                               │
+         │                                                                      │
+         │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
+         │  │  web_search  │ │ web_extract  │ │  read_image  │ │ python_exec│  │
+         │  │  (search web)│ │ (read URL)   │ │ (vision OCR) │ │ (run code) │  │
+         │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘  │
+         │                                                                      │
+         │  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────────────┐  │
+         │  │  read_file   │ │scratchpad_add│ │      SCRATCHPAD (SQLite)    │  │
+         │  │(txt/csv/xlsx)│ │ (log finding)│ │  Write-only, auto-logged    │  │
+         │  └──────────────┘ └──────────────┘ └─────────────────────────────┘  │
+         └──────────────────────────────────────────────────────────────────────┘
                                         │
                          ┌──────────────▼──────────────────────┐
                          │         OUTPUT                      │
@@ -71,10 +65,11 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
                          │  • Scratchpad findings table       │
                          │  • Source URL list                  │
                          │  • JSON (--json flag)             │
+                         │  • Orchestrator synthesis           │
                          └─────────────────────────────────────┘
 ```
 
-Each worker is an independent Ollama model with tool-calling access to `web_search` and `web_extract`. They search the web, read pages, and write their report — all in parallel via `ThreadPoolExecutor`. Every search and extract result is automatically logged to the scratchpad. The orchestrator collects everything, reads the scratchpad for cross-referencing, and saves the full output to a timestamped `.md` file.
+Each worker is an independent Ollama model with a **tool bundle** assigned by preflight. The orchestrator analyzes the question, determines what tools are needed, and gives each worker tailored capabilities. Workers can search the web, read files, analyze images, and run Python code — all in parallel via `ThreadPoolExecutor`. Every tool call result is automatically logged to the scratchpad. The orchestrator collects everything, optionally synthesizes the findings, and saves the full output to a timestamped `.md` file.
 
 ## Quick start
 
@@ -132,7 +127,48 @@ Schema:
 - `findings(worker, source_url, finding, category, confidence, timestamp)`
 - `sources(worker, url, title, snippet, timestamp)`
 
-## Configuration
+## Modular Tool System
+
+The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a self-contained module with a `TOOLS` list and optional `BUNDLES` list. Adding a new tool is just: create a file, extend `BaseTool`, export it.
+
+### Available tools
+
+| Tool | Description | Used by bundles |
+|------|-------------|-----------------|
+| `web_search` | Search the web (DuckDuckGo/SearXNG/Google) | all |
+| `web_extract` | Read content from a URL | all |
+| `scratchpad_add` | Log raw findings to the shared scratchpad | all |
+| `read_image` | Read text/numbers from images via Gemma4 vision | vision, files, all |
+| `read_file` | Read .txt, .csv, .json, .xml, .docx, .xlsx files | files, all |
+| `python_exec` | Execute Python code for calculations/processing | code, all |
+
+### Tool bundles
+
+Preflight assigns a tool bundle to each worker based on the question. Bundles are additive — specialty bundles include search + scratchpad + their unique tools.
+
+| Bundle | Tools | When assigned |
+|--------|-------|--------------|
+| `default` | web_search, web_extract, scratchpad_add | General research questions |
+| `vision` | read_image, web_search, web_extract, scratchpad_add | Questions with image attachments (.png/.jpg) |
+| `code` | python_exec, web_search, web_extract, scratchpad_add | Questions needing computation ("calculate", "average") |
+| `files` | read_file, read_image, web_search, web_extract, scratchpad_add | Questions with attached data files (.xlsx/.csv/.docx) |
+| `search` | web_search, web_extract | Lightweight search-only (no scratchpad) |
+| `scratchpad` | scratchpad_add | Logging-only (no search) |
+| `all` | Every registered tool | Everything (debugging) |
+
+### Preflight question analysis
+
+Before spawning workers, the orchestrator runs a **preflight** pass using the orchestrator model:
+
+1. **Classifies answer type**: number, name, phrase, date, or other
+2. **Detects file attachments**: Scans the goal for `.png`, `.jpg`, `.xlsx`, `.csv`, `.docx`, etc.
+3. **Assigns tool bundles**: Each worker gets a bundle matching their role (vision worker for images, code worker for computations)
+4. **Pre-loads file contents**: For image files, runs the Gemma4 vision model to extract text/numbers. For structured files, runs the file reader. Injects the extracted data directly into every worker's system prompt
+5. **Computes answers directly**: For number-type questions with preloaded data, the orchestrator computes the answer itself using Python (no flaky LLM workers needed for math)
+
+This means workers never need to "remember" to call `read_image` — the data is already right there in their context when they start.
+
+## Complexity estimation (`--auto`)
 
 All config is via environment variables or a JSON config file (`swarm_config.json` by default, or set via `SWARM_CONFIG` env var or `--config` flag).
 
@@ -215,16 +251,29 @@ python3 -m swarm --goal "Your question" --mix --config my_team.json
 
 Ollama's `/api/chat` endpoint supports native function calling. The swarm:
 
-1. Sends prompt + tool definitions to the model
-2. Model responds with `tool_calls` (search query) or content (final answer)
-3. Script executes the tool against the configured search backend
-4. Feeds results back as a `role: "tool"` message
-5. Loop repeats up to 3 rounds until the model has enough info to answer
+1. **Preflight** analyzes the question and assigns a tool bundle to each worker
+2. **Orchestrator pre-reads** any attached files and injects their contents into worker prompts
+3. Sends prompt + tool definitions (filtered by bundle) to each model
+4. Model responds with `tool_calls` (search query, image read, code exec) or content (final answer)
+5. Script executes the tool against the configured backend
+6. Feeds results back as a `role: "tool"` message
+7. Loop repeats up to 5 rounds until the model has enough info to answer
 
-If a model exhausts all 3 search rounds without producing a final answer, the script:
+If a model exhausts all tool rounds without producing a final answer, the script:
 1. Sends a gentle "synthesize your findings" prompt
 2. If that fails, sends an aggressive "STOP SEARCHING. WRITE NOW." prompt
 3. If both fail, falls back to re-firing the question at a different model
+
+For **file-based questions** (images, spreadsheets, docs), the orchestrator can bypass the worker loop entirely and compute the answer directly from preloaded data — no flaky LLM tool calling needed.
+
+### Smoke test
+
+```bash
+python3 test_tools.py                    # Quick tool smoke test
+python3 test_tools.py --verbose          # Show full tool outputs
+python3 test_tools.py --samples=100      # Bigger test files
+python3 test_tools.py --skip-swarm       # Skip full swarm tests (faster)
+```
 
 ## Performance
 
@@ -273,15 +322,27 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 │   ├── __init__.py        # Public API: from swarm import run_swarm
 │   ├── __main__.py        # CLI entry point (thin wrapper)
 │   ├── runner.py          # Library entry point: run_swarm()
-│   ├── orchestrator.py    # Spawns workers, manages scratchpad
-│   ├── worker.py          # Worker agent loop
+│   ├── orchestrator.py    # Spawns workers, preloads files, manages scratchpad
+│   ├── preflight.py       # Question analysis + bundle assignment
+│   ├── worker.py          # Worker agent loop with tool access
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
-│   ├── tools.py           # Tool definitions + execute_tool()
+│   ├── synthesis.py       # Orchestrator synthesis (boss reads the room)
 │   ├── config.py          # Config loader + defaults
 │   ├── complexity.py      # Model-based complexity estimation
-│   └── output.py          # Output formatting + markdown saving
-├── swarm2.py              # Legacy monolith (preserved)
+│   ├── output.py          # Output formatting + markdown saving
+│   └── tools/             # Modular tool registry
+│       ├── __init__.py    # Registry: get_registry(), reset_registry()
+│       ├── base.py        # BaseTool abstract class
+│       ├── registry.py    # ToolRegistry: discover, register, bundle
+│       ├── web_search.py  # Search the web
+│       ├── web_extract.py # Read content from URLs
+│       ├── scratchpad.py  # Log findings tool
+│       ├── vision.py      # Read images via Gemma4
+│       ├── python_exec.py # Execute Python code
+│       └── file_reader.py # Read .txt/.csv/.json/.docx/.xlsx
+├── test_tools.py            # Tool smoke test (random files, all tool paths)
+├── swarm2.py                # Legacy monolith (preserved)
 ├── swarm_config.json       # Configurable team, models, prompts
 ├── swarm.py               # Minimal version (no web search)
 ├── SCRATCHPAD.md           # Scratchpad architecture docs
