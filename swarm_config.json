@@ -27,7 +27,7 @@
     },
     {
       "name": "Romy",
-      "model": "qwen",
+      "model": "gemma",
       "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading.",
       "prompt": "You are Romy, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
     },

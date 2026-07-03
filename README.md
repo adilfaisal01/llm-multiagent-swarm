@@ -34,8 +34,8 @@ python3 -m swarm --goal "What's happening with AI regulation in the EU?" --mix
           ▼                     ▼      ▼      ▼      ▼                     ▼
    ┌───────────┐        ┌───────────┐ ┌───────────┐ ┌───────────┐  ┌───────────┐
    │   VERA    │        │   CYRUS   │ │   ROMY    │ │   ASH     │  │   ZARA    │
-   │ gpt-oss   │        │ nemotron  │ │ qwen3.5   │ │ deepseek  │  │ gpt-oss   │
-   │ 120B      │        │ 30B       │ │ 397B      │ │ flash     │  │ 120B      │
+   │ gpt-oss   │        │ nemotron  │ │ gemma4    │ │ deepseek  │  │ gpt-oss   │
+   │ 120B      │        │ 30B       │ │ 31B       │ │ ~158B     │  │ 120B      │
    │           │        │           │ │           │ │           │  │           │
    │vision     │        │  code     │ │ default   │ │ search    │  │ files     │
    │ bundle    │        │  bundle   │ │ bundle    │ │ bundle    │  │ bundle    │
@@ -79,7 +79,7 @@ ollama serve
 # Pull cloud models
 ollama pull gpt-oss:120b-cloud
 ollama pull deepseek-v4-flash:cloud
-ollama pull qwen3.5:397b-cloud
+ollama pull gemma4:31b-cloud
 ollama pull nemotron-3-nano:30b-cloud
 
 # Fire the swarm
@@ -238,8 +238,7 @@ See `swarm_config.json` for a full example.
 |-------|-------|------|-------|-------|
 | `gpt-oss` | gpt-oss:120b-cloud | 120B | ~2-15s | Reliable, clean output |
 | `nemotron` | nemotron-3-nano:30b-cloud | 30B | ~0.5-15s | Fast, production-proven |
-| `qwen` | qwen3.5:397b-cloud | 397B | ~8-50s | Best reasoning, often answers from weights |
-| `gemma` | gemma4:31b-cloud | 31B | ~13-30s | Multimodal (reads images) |
+| `gemma` | gemma4:31b-cloud | 31B | ~13-30s | Multimodal (reads images), Romy's model |
 | `deepseek` | deepseek-v4-flash:cloud | ~158B | ~4-20s | Fast, orchestrator model |
 | `ministral` | ministral-3:14b-cloud | 14B | ~4.5-20s | ⚠️ Being retired by Ollama Cloud |
 | `nemotron-super` | nemotron-3-super:cloud | 120B | ~1-20s | ⚠️ Buggy — may time out or return empty |
@@ -254,7 +253,7 @@ In `--mix` mode, each worker gets a different model and named identity:
 |------|-------|-------|
 | **Vera** | gpt-oss | Origins & history |
 | **Cyrus** | nemotron | Money & players |
-| **Romy** | qwen | Implications & future |
+| **Romy** | gemma | Implications & future |
 | **Ash** | deepseek | Controversies |
 | **Zara** | gpt-oss | Technical details |
 
