@@ -71,18 +71,18 @@ class WorkerGrid(DataTable):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.workers: dict[int, dict] = {}
+        self._worker_states: dict[int, dict] = {}
         self.add_columns("Worker", "Model", "Bundle", "Status", "Time", "Rounds")
         self.cursor_type = "none"
 
     def update_worker(self, worker_id: int, data: dict) -> None:
-        self.workers[worker_id] = data
+        self._worker_states[worker_id] = data
         self._refresh_rows()
 
     def _refresh_rows(self) -> None:
         self.clear()
-        for worker_id in sorted(self.workers):
-            w = self.workers[worker_id]
+        for worker_id in sorted(self._worker_states):
+            w = self._worker_states[worker_id]
             self.add_row(
                 w.get("name", f"Worker {worker_id}"),
                 w.get("model", "").split(":")[0],
@@ -93,7 +93,7 @@ class WorkerGrid(DataTable):
             )
 
     def clear_workers(self) -> None:
-        self.workers.clear()
+        self._worker_states.clear()
         self.clear()
 
 
