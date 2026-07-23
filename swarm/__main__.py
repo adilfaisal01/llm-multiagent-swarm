@@ -38,7 +38,14 @@ def main():
                     help="Orchestrator synthesizes all worker reports into a unified answer")
     ap.add_argument("--no-synthesize", action="store_false", dest="synthesize",
                     help="Skip the synthesis step")
+    ap.add_argument("--tui", action="store_true",
+                    help="Launch the persistent Textual TUI instead of a single CLI run")
     args = ap.parse_args()
+
+    if args.tui:
+        from .tui import run_tui
+        run_tui()
+        return
 
     # Run the swarm via the library entry point
     result = run_swarm(

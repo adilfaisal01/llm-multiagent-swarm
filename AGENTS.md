@@ -6,7 +6,7 @@ This file tells AI agents (Claude Code, Codex, Cursor, Hermes, etc.) how to work
 
 Multi-agent research orchestration using Ollama cloud models. Spawns parallel workers with focused research angles, each with tool access, and collects their outputs via a shared write-only scratchpad.
 
-**Zero dependencies** — pure Python stdlib. No pip install needed.
+**Library core is still pure stdlib**, but the optional persistent TUI uses `textual` as its one external dependency.
 
 ## Architecture
 
@@ -24,6 +24,12 @@ swarm/
 ├── config.py         # Config loader from JSON file
 ├── complexity.py     # Model-based complexity estimation (1-5)
 ├── output.py         # Output formatting + markdown file saving
+├── tui/              # Optional persistent Textual TUI
+│   ├── __init__.py   # Exports run_tui, Session, SessionStore
+│   ├── app.py        # Main Textual app + event loop
+│   ├── session.py    # In-memory session model + follow-up context
+│   ├── store.py      # SQLite persistence for sessions/results
+│   └── widgets.py    # ChatLog, WorkerGrid, SessionList, InputBar
 └── tools/            # Modular tool registry
     ├── __init__.py   # Registry: get_registry(), reset_registry()
     ├── base.py       # BaseTool abstract class
@@ -172,14 +178,24 @@ This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning
 - Don't describe the preload hack (it's removed — workers use tools now)
 - Don't suggest hardcoded bundle assignments (the LLM decides)
 
+### Persistent TUI (`--tui`)
+A Textual-based terminal UI is available as an optional mode:
+
+- Run with `python3 -m swarm --tui`
+- Persistent session sidebar: previous research sessions are loaded from `swarm_sessions.db`
+- Follow-up questions inject the previous run's synthesis + top scratchpad findings as context
+- Live worker grid shows each worker's status, model, bundle, elapsed time, and search rounds
+- `Ctrl+N` creates a new session, `Ctrl+S` exports the current run to markdown, `Ctrl+Q` quits
+- Sessions are saved to SQLite automatically; markdown exports use the existing `save_markdown()`
+
 ### Future Ideas
-- **TUI dashboard**: `textual` or `rich`-based live pipeline view showing worker status, findings counter, elapsed time, per-worker logs. Like a devops dashboard but make it fashion.
 - **MMLU benchmark (no tools)**: Strip the swarm of all tools (no search, no code exec, no vision) and run on MMLU. Tests whether multi-agent debate + synthesis beats single-model baselines on pure reasoning alone. Key question: does the orchestrate → synthesize pipeline add value beyond asking one good model?
 - **BrowserComp benchmark**: Run the swarm on BrowserComp (web interaction tasks) using browser_navigate/click/type tools. Tests the swarm's ability to coordinate multi-step browser workflows across workers. Pipeline mode especially relevant here — one worker researches, another fills forms, a third verifies.
 
 ## Common Pitfalls
 
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers
+- **Persistent TUI dependency**: `textual>=0.70.0` is declared in `pyproject.toml`; install with `pip install -e .` or just `pip install textual`
 - **JSON output**: Goes to stdout (not stderr) so piping works: `python3 -m swarm --goal "..." --json | python3 -c "import json,sys; ..."`
 - **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`)
 - **Worker count**: Clamped to 1-5. `--workers 20` caps at 5 with wrap-around

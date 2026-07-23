@@ -22,6 +22,7 @@ def run_worker(
     ollama_base: str = "http://localhost:11434",
     fallback_models: list | None = None,
     tool_bundle: str = "default",
+    progress=None,
 ) -> dict:
     """Run a single worker agent with tool access.
 
@@ -29,11 +30,16 @@ def run_worker(
     tool_bundle (assigned by preflight). This lets different
     workers have different capabilities (vision, python, search, etc.).
 
+    Args:
+        progress: Optional callable(event, payload) for live UI updates.
+
     Returns a dict with worker_id, name, model, duration_s, search_rounds,
     response, and status.
     """
     if fallback_models is None:
         fallback_models = []
+    if progress is None:
+        progress = lambda *_: None
 
     # Load the tool registry and get bundle-specific tools
     registry = get_registry()
@@ -59,6 +65,7 @@ def run_worker(
         )
 
     start = time.time()
+    progress("worker_start", {"worker_id": task_id, "name": worker_name, "bundle": tool_bundle, "model": model_name})
     messages = [
         {"role": "system", "content": system_prompt},
         {
@@ -106,19 +113,25 @@ def run_worker(
             break
 
         for tc in tool_calls:
+            fn_name = tc["function"]["name"]
+            progress("worker_tool_call", {
+                "worker_id": task_id,
+                "name": worker_name,
+                "tool": fn_name,
+                "bundle": tool_bundle,
+            })
             result_content = registry.execute(
-                tc["function"]["name"],
+                fn_name,
                 tc["function"].get("arguments", {}),
                 worker_name=worker_name,
             )
             messages.append({
                 "role": "tool",
-                "tool_name": tc["function"]["name"],
+                "tool_name": fn_name,
                 "content": result_content[:5000],
             })
             # If this is a read_image or python_exec result with real data,
             # we're likely done with search — nudge the model to produce text
-            fn_name = tc["function"]["name"]
             if fn_name in ("read_image", "python_exec", "read_file") and result_content and len(result_content) > 20:
                 # Add a synthesis nudge after meaningful tool results
                 messages.append({
