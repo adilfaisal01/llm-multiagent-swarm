@@ -37,3 +37,6 @@ test-results/
 
 # Stray swarm output files
 swarm_*.md
+
+# Persistent TUI session database
+swarm_sessions.db

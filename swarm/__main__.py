@@ -17,7 +17,7 @@ from .output import format_json, print_summary, save_markdown
 from .runner import run_swarm
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Swarm v2 with web search and mixed models")
     ap.add_argument("--goal", default=None,
                     help="Research question (optional if config file has 'goal' field)")
@@ -38,11 +38,23 @@ def main():
                     help="Orchestrator synthesizes all worker reports into a unified answer")
     ap.add_argument("--no-synthesize", action="store_false", dest="synthesize",
                     help="Skip the synthesis step")
-    args = ap.parse_args()
+    ap.add_argument("--tui", action="store_true",
+                    help="Launch the persistent Textual TUI instead of a single CLI run")
+    args = ap.parse_args(argv)
+
+    if args.tui:
+        from .tui import run_tui
+        run_tui()
+        return
+
+    goal = args.goal or ""
+    if not goal.strip():
+        print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!", file=sys.stderr)
+        sys.exit(1)
 
     # Run the swarm via the library entry point
     result = run_swarm(
-        goal=args.goal or "",
+        goal=goal,
         workers=args.workers,
         auto=args.auto,
         mix=args.mix,

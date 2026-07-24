@@ -50,14 +50,15 @@ def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) ->
     return prompt
 
 
-def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out):
+def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress=None):
     """Run all workers in parallel via ThreadPoolExecutor."""
     results = []
     with ThreadPoolExecutor(max_workers=len(workers)) as ex:
         futures = {
             ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
                       w["angle"], w.get("prompt", ""),
-                      ollama_base, fallback_models, w.get("tool_bundle", "default")): i
+                      ollama_base, fallback_models, w.get("tool_bundle", "default"),
+                      progress): i
             for i, w in enumerate(workers)
         }
         for f in as_completed(futures):
@@ -67,11 +68,13 @@ def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out):
             print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
                   f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
                   f"{len(r['response'])} chars", file=out)
+            if progress:
+                progress("worker_done", r)
     results.sort(key=lambda x: x["worker_id"])
     return results
 
 
-def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out):
+def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress=None):
     """Run workers sequentially, passing previous outputs down the chain."""
     results = []
     completed = {}
@@ -96,10 +99,13 @@ def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_model
                     w["prompt"] = prompt
 
                 print(f"  ▶️  Running {w['name']} (bundle: {w['tool_bundle']}, depends_on: {dep})...", file=out)
+                if progress:
+                    progress("worker_start", {"worker_id": i + 1, "name": w["name"], "bundle": w.get("tool_bundle", "default")})
                 r = run_worker(
                     i + 1, goal, w["name"], w["model"],
                     w["angle"], w["prompt"],
                     ollama_base, fallback_models, w.get("tool_bundle", "default"),
+                    progress,
                 )
                 results.append(r)
                 completed[i] = r
@@ -108,6 +114,8 @@ def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_model
                 print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
                       f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
                       f"{len(r['response'])} chars", file=out)
+                if progress:
+                    progress("worker_done", r)
 
     results.sort(key=lambda x: x["worker_id"])
     return results
@@ -121,14 +129,23 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
                 fallback_models: list = None,
                 ollama_base: str = "http://localhost:11434",
                 synthesize: bool = True,
-                synthesis_model: str | None = None) -> dict:
-    """Run the swarm and return results with scratchpad data."""
+                synthesis_model: str | None = None,
+                progress_callback=None) -> dict:
+    """Run the swarm and return results with scratchpad data.
+
+    Args:
+        progress_callback: Optional callable(event, payload) receiving
+            preflight_start, preflight_done, worker_start, worker_done,
+            synthesis_start, synthesis_done, done events.
+    """
     if team is None:
         team = []
     if angles is None:
         angles = []
     if fallback_models is None:
         fallback_models = []
+    if progress_callback is None:
+        progress_callback = lambda *_: None
 
     # Create the write-only scratchpad for raw findings
     sp = Scratchpad()
@@ -136,15 +153,25 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
 
     # Preflight: orchestrator analyzes the question and generates strategies
     print(f"  [PREFLIGHT] Analyzing question for strategy…", file=sys.stderr)
+    progress_callback("preflight_start", {"goal": goal, "num_workers": num_workers})
     preflight_model = synthesis_model or default_worker or "gpt-oss:120b-cloud"
     preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base, num_workers=num_workers)
     strategies = preflight["strategies"]
     answer_type = preflight["answer_type"]
+    research_mode = preflight.get("research_mode", "objective")
     bundle_assignments = preflight.get("bundles", ["default"] * num_workers)
     execution_mode = preflight.get("mode", "parallel")
     depends_on = preflight.get("depends_on", [None] * num_workers)
-    print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | {len(strategies)} strategies", file=sys.stderr)
+    print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | Research mode: {research_mode} | {len(strategies)} strategies", file=sys.stderr)
     print(f"  [PREFLIGHT] Assigned bundles: {', '.join(bundle_assignments)}", file=sys.stderr)
+    progress_callback("preflight_done", {
+        "answer_type": answer_type,
+        "research_mode": research_mode,
+        "mode": execution_mode,
+        "bundles": bundle_assignments,
+        "depends_on": depends_on,
+        "strategies": strategies,
+    })
     if execution_mode == "pipeline":
         deps_str = ", ".join(str(d) if d is not None else "-" for d in depends_on)
         print(f"  [PREFLIGHT] Pipeline deps: {deps_str}", file=sys.stderr)
@@ -167,7 +194,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             w_model = model or default_worker or "gpt-oss:120b-cloud"
             w_name = f"Worker {i+1}"
 
-        prompt = build_worker_prompt(goal, strategy, answer_type, w_name, tool_bundle=tool_bundle)
+        prompt = build_worker_prompt(goal, strategy, answer_type, w_name, tool_bundle=tool_bundle, research_mode=research_mode)
         if top_angle:
             prompt += f"\n\nADDITIONAL CONTEXT: {top_angle}"
         prompt = _inject_file_prompt(prompt, tool_bundle, file_path_in_goal)
@@ -199,9 +226,9 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
 
     # Execute workers in the right mode
     if execution_mode == "pipeline":
-        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out)
+        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress_callback)
     else:
-        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out)
+        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress_callback)
 
     # Collect scratchpad summary
     scratch_summary = sp.get_summary()
@@ -214,6 +241,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
         "goal": goal,
         "num_workers": num_workers,
         "models": models_used,
+        "research_mode": research_mode,
         "wall_time_s": round(sum(r["duration_s"] for r in results), 1),
         "workers": results,
         "scratchpad": {
@@ -227,6 +255,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     if synthesize:
         syn_model = synthesis_model or (default_worker or "gpt-oss:120b-cloud")
         print(f"\n  🎯 Orchestrator synthesizing... (model: {syn_model.split(':')[0]})", file=out)
+        progress_callback("synthesis_start", {"model": syn_model})
         syn_start = time.time()
         synthesis_text = run_synthesis(goal, result, model=syn_model, ollama_base=ollama_base)
         syn_elapsed = round(time.time() - syn_start, 1)
@@ -237,9 +266,16 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars)", file=out)
         else:
             print(f"  ⚠️  Orchestrator synthesis failed ({syn_elapsed}s)", file=out)
+        progress_callback("synthesis_done", {
+            "model": syn_model,
+            "chars": len(synthesis_text),
+            "time_s": syn_elapsed,
+            "ok": not synthesis_text.startswith("[Synthesis error"),
+        })
     else:
         result["synthesis"] = ""
         result["synthesis_model"] = ""
         result["synthesis_time_s"] = 0
 
+    progress_callback("done", result)
     return result

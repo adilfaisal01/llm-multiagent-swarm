@@ -6,7 +6,7 @@ This file tells AI agents (Claude Code, Codex, Cursor, Hermes, etc.) how to work
 
 Multi-agent research orchestration using Ollama cloud models. Spawns parallel workers with focused research angles, each with tool access, and collects their outputs via a shared write-only scratchpad.
 
-**Zero dependencies** — pure Python stdlib. No pip install needed.
+**Library core is still pure stdlib**, but the optional persistent TUI uses `textual` as its one external dependency.
 
 ## Architecture
 
@@ -24,6 +24,20 @@ swarm/
 ├── config.py         # Config loader from JSON file
 ├── complexity.py     # Model-based complexity estimation (1-5)
 ├── output.py         # Output formatting + markdown file saving
+├── prompts/          # External markdown prompt templates
+│   ├── __init__.py   # load_prompt() and render_prompt()
+│   ├── preflight.md  # Preflight JSON-generation prompt
+│   ├── worker.md     # Worker system prompt template
+│   ├── synthesis.md  # Synthesis prompt template
+│   ├── mode_*.md     # Objective / subjective mode instructions
+│   ├── bundle_*.md   # Per-bundle tool-forcing rules
+│   └── fallback_*.md # Fallback model prompts
+├── tui/              # Optional persistent Textual TUI
+│   ├── __init__.py   # Exports run_tui, Session, SessionStore
+│   ├── app.py        # Main Textual app + event loop
+│   ├── session.py    # In-memory session model + follow-up context
+│   ├── store.py      # SQLite persistence for sessions/results
+│   └── widgets.py    # ChatLog, WorkerGrid, SessionList, InputBar
 └── tools/            # Modular tool registry
     ├── __init__.py   # Registry: get_registry(), reset_registry()
     ├── base.py       # BaseTool abstract class
@@ -135,7 +149,26 @@ python3 -m demo-swarm --goal "Your question" --mix
 ```bash
 python3 test_tools.py              # Tool smoke test (11/12 pass)
 bash chaos_monkey.sh               # 15 chaos monkey tests
+python3 -m unittest discover tests/ # Hermetic unit + functional tests
+pytest tests/                       # Same tests via pytest
 ```
+
+## CI
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push to `main`/`feature/*` and on pull requests:
+
+- Matrix: Python 3.11, 3.12
+- Compiles all `swarm/**/*.py`
+- Checks core + TUI imports
+- Runs `test_tools.py --skip-swarm`
+- Runs `python3 -m unittest discover tests/`
+- Runs `pytest tests/`
+
+The test suite under `tests/` covers:
+- Prompt template loading and rendering
+- TUI session model + SQLite persistence
+- CLI argument validation
+- Adversarial cases derived from `chaos_monkey.sh` (empty goal, unicode, missing config, etc.)
 
 ## Auto-Testing on Commit
 
@@ -172,14 +205,39 @@ This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning
 - Don't describe the preload hack (it's removed — workers use tools now)
 - Don't suggest hardcoded bundle assignments (the LLM decides)
 
+### Persistent TUI (`--tui`)
+A Textual-based terminal UI is available as an optional mode:
+
+- Run with `python3 -m swarm --tui`
+- Persistent session sidebar: previous research sessions are loaded from `swarm_sessions.db`
+- Follow-up questions inject the previous run's synthesis + top scratchpad findings as context
+- Live worker grid shows each worker's status, model, bundle, elapsed time, and a hybrid progress bar
+- Live sources panel shows worker name + tool + query/URL as research happens
+- Preflight auto-detects `objective` vs `subjective` research mode; synthesis style adapts accordingly
+- `Ctrl+N` creates a new session, `Ctrl+S` exports the current run to markdown, `Ctrl+Q` quits
+- Markdown is auto-saved to `swarm_outputs/` on every completed run
+- Sessions are saved to SQLite automatically; markdown exports use the existing `save_markdown()`
+
+### Research modes (auto-detected)
+Preflight classifies every question as either:
+
+- **objective** — asks for facts, numbers, dates, definitions, current events
+- **subjective** — asks for opinions, views, interpretations, debates, or perspectives
+
+The mode changes:
+- Worker prompt tone and angle strategy
+- Scratchpad guidance (e.g., log `direct_quote`, `paraphrase`, `claim`, `contradiction`)
+- Orchestrator synthesis style (factual answer vs perspective map with attribution)
+
 ### Future Ideas
-- **TUI dashboard**: `textual` or `rich`-based live pipeline view showing worker status, findings counter, elapsed time, per-worker logs. Like a devops dashboard but make it fashion.
 - **MMLU benchmark (no tools)**: Strip the swarm of all tools (no search, no code exec, no vision) and run on MMLU. Tests whether multi-agent debate + synthesis beats single-model baselines on pure reasoning alone. Key question: does the orchestrate → synthesize pipeline add value beyond asking one good model?
 - **BrowserComp benchmark**: Run the swarm on BrowserComp (web interaction tasks) using browser_navigate/click/type tools. Tests the swarm's ability to coordinate multi-step browser workflows across workers. Pipeline mode especially relevant here — one worker researches, another fills forms, a third verifies.
 
 ## Common Pitfalls
 
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers
+- **Persistent TUI dependency**: `textual>=0.70.0` is declared in `pyproject.toml`; install with `pip install -e .` or just `pip install textual`
+- **TUI output**: Markdown auto-saved to `swarm_outputs/` on every run; live sources shown in side panel
 - **JSON output**: Goes to stdout (not stderr) so piping works: `python3 -m swarm --goal "..." --json | python3 -c "import json,sys; ..."`
 - **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`)
 - **Worker count**: Clamped to 1-5. `--workers 20` caps at 5 with wrap-around
