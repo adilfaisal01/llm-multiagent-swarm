@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, DataTable, Input, Label, ListItem, ListView, RichLog, Static
+from textual.widgets import Button, DataTable, Input, Label, ListItem, ListView, ProgressBar, RichLog, Static
 
 
 class SessionList(ListView):
@@ -58,43 +58,91 @@ class ChatLog(RichLog):
         self.write(f"[#38BDF8]🐝 {name}[/] [{status}] {detail}")
 
 
-class WorkerGrid(DataTable):
-    """Live table of worker status."""
+class WorkerCard(Horizontal):
+    """Single worker row with name, progress bar, status, and time."""
+
+    DEFAULT_CSS = """
+    WorkerCard {
+        width: 100%;
+        height: auto;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
+    WorkerCard Static {
+        width: auto;
+        content-align: center middle;
+    }
+    WorkerCard #worker-name {
+        width: 12;
+    }
+    WorkerCard ProgressBar {
+        width: 20;
+    }
+    WorkerCard #worker-status {
+        width: 1fr;
+    }
+    """
+
+    def __init__(self, worker_id: int, **kwargs):
+        super().__init__(**kwargs)
+        self.worker_id = worker_id
+        self.name_label = Static(f"W{worker_id}", id="worker-name")
+        self.progress = ProgressBar(total=5, id="worker-progress")
+        self.status_label = Static("idle", id="worker-status")
+
+    def compose(self):
+        yield self.name_label
+        yield self.progress
+        yield self.status_label
+
+    def update(self, data: dict) -> None:
+        name = data.get("name", f"Worker {self.worker_id}")
+        model = data.get("model", "").split(":")[0]
+        bundle = data.get("bundle", "default")
+        status = data.get("status", "idle")
+        duration = data.get("duration_s", 0)
+        rounds = data.get("rounds", 0)
+        self.name_label.update(f"{name}")
+        self.status_label.update(
+            f"{model} | {bundle} | {status} | {duration:.1f}s | {rounds}/5"
+        )
+
+    def advance(self) -> None:
+        self.progress.advance(1)
+
+
+class WorkerGrid(Vertical):
+    """Container of worker cards."""
 
     DEFAULT_CSS = """
     WorkerGrid {
         width: 100%;
         height: 1fr;
         border: solid $primary;
+        padding: 1;
     }
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._worker_states: dict[int, dict] = {}
-        self.add_columns("Worker", "Model", "Bundle", "Status", "Time", "Rounds")
-        self.cursor_type = "none"
+        self._cards: dict[int, WorkerCard] = {}
 
     def update_worker(self, worker_id: int, data: dict) -> None:
-        self._worker_states[worker_id] = data
-        self._refresh_rows()
+        if worker_id not in self._cards:
+            card = WorkerCard(worker_id)
+            self._cards[worker_id] = card
+            self.mount(card)
+        self._cards[worker_id].update(data)
 
-    def _refresh_rows(self) -> None:
-        self.clear()
-        for worker_id in sorted(self._worker_states):
-            w = self._worker_states[worker_id]
-            self.add_row(
-                w.get("name", f"Worker {worker_id}"),
-                w.get("model", "").split(":")[0],
-                w.get("bundle", "default"),
-                w.get("status", "idle"),
-                f"{w.get('duration_s', 0):.1f}s",
-                str(w.get("rounds", 0)),
-            )
+    def advance_worker(self, worker_id: int) -> None:
+        card = self._cards.get(worker_id)
+        if card:
+            card.advance()
 
     def clear_workers(self) -> None:
-        self._worker_states.clear()
-        self.clear()
+        for card in self._cards.values():
+            card.remove()
+        self._cards.clear()
 
 
 class InputBar(Horizontal):
@@ -118,15 +166,37 @@ class InputBar(Horizontal):
         super().__init__(**kwargs)
         self.input = Input(placeholder="Ask the swarm...", id="query-input")
         self.submit = Button("Submit", variant="primary", id="submit-btn")
-        self.loading = Label("⚡ Ready", id="status-label")
+        self.status_label = Label("⚡ Ready", id="status-label")
 
     def compose(self):
         yield self.input
         yield self.submit
-        yield self.loading
+        yield self.status_label
 
     def set_loading(self, text: str) -> None:
-        self.loading.update(text)
+        self.status_label.update(text)
+
+
+class SourcesPanel(RichLog):
+    """Live feed of sources and tool calls."""
+
+    DEFAULT_CSS = """
+    SourcesPanel {
+        width: 100%;
+        height: 1fr;
+        border: solid $primary;
+        padding: 1;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(highlight=True, markup=True, wrap=True, **kwargs)
+
+    def add_source(self, worker: str, tool: str, detail: str) -> None:
+        self.write(f"[#38BDF8]{worker}[/] [{tool}] {detail}")
+
+    def clear_sources(self) -> None:
+        self.clear()
 
 
 class FooterHint(Static):

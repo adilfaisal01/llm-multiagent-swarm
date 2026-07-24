@@ -325,6 +325,17 @@ python3 -m demo-swarm --goal "Your question" --mix
 | File attachments | Not supported | Tool-based (workers read files) |
 | Preflight | None | LLM analyzes question + assigns bundles |
 
+## CI
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push to `main`/`feature/*` and on pull requests:
+
+- Matrix: Python 3.11, 3.12
+- Compiles all `swarm/**/*.py`
+- Checks core + TUI imports
+- Runs `test_tools.py --skip-swarm`
+- Runs `python3 -m unittest discover tests/`
+- Runs `pytest tests/`
+
 ## Auto-Testing on Commit
 
 A **post-commit git hook** runs chaos monkey + benchmark automatically after every commit:
@@ -357,6 +368,20 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 - No SearXNG needed — DuckDuckGo is the default backend and works out of the box
 - Optional: SearXNG instance at `SEARXNG_URL` for higher rate limits
 
+## Persistent TUI
+
+Run with `python3 -m swarm --tui`:
+
+- Three-pane layout: sessions sidebar, chat + worker dashboard, live sources panel
+- Each worker shows a hybrid progress bar (fills per tool round, capped at 5)
+- Sources panel shows worker name + tool + query/URL as research happens
+- Markdown is auto-saved to `swarm_outputs/` after every completed run
+- Follow-up questions inject the previous run's synthesis + top scratchpad findings
+- Preflight auto-detects research mode (`objective` vs `subjective`) and adapts synthesis style:
+  - **Objective** mode aims for a clear factual answer
+  - **Subjective** mode maps perspectives, attributes claims, and flags contradictions
+- `Ctrl+N` new session, `Ctrl+S` re-save, `Ctrl+Q` quit
+
 ## Files
 
 ```
@@ -383,6 +408,14 @@ bash .githooks/post-commit   # re-run tests for the latest commit
 │   │   ├── vision.py      # Read images via Gemma4
 │   │   ├── python_exec.py # Execute Python code
 │   │   └── file_reader.py # Read .txt/.csv/.json/.xlsx
+│   ├── prompts/           # External markdown prompt templates
+│   │   ├── __init__.py    # load_prompt() and render_prompt()
+│   │   ├── preflight.md   # Preflight JSON-generation prompt
+│   │   ├── worker.md      # Worker system prompt template
+│   │   ├── synthesis.md   # Synthesis prompt template
+│   │   ├── mode_*.md      # Objective / subjective mode instructions
+│   │   ├── bundle_*.md    # Per-bundle tool-forcing rules
+│   │   └── fallback_*.md  # Fallback model prompts
 │   └── tui/               # Optional persistent Textual TUI
 │       ├── __init__.py    # Exports run_tui, Session, SessionStore
 │       ├── app.py         # Main Textual app + event loop

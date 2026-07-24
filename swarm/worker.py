@@ -9,6 +9,7 @@ import json
 import time
 import urllib.request
 
+from .prompts import render_prompt
 from .tools import get_registry
 
 
@@ -49,19 +50,12 @@ def run_worker(
     if prompt_template:
         system_prompt = prompt_template.replace("{goal}", goal).replace("{angle}", angle)
     else:
-        system_prompt = (
-            f"You are {worker_name}, a focused research agent.\n\n"
-            f"MAIN QUESTION: {goal}\n\n"
-            f"YOUR ANGLE: {angle}\n\n"
-            f"AVAILABLE TOOLS: {', '.join(tool_names)}\n\n"
-            f"WORKFLOW:\n"
-            f"1. Use your tools to find information. Each tool has a specific purpose.\n"
-            f"2. For EVERY finding, call scratchpad_add to log raw facts, quotes, "
-            f"numbers, and source URLs.\n"
-            f"3. After collecting data, write your final report.\n\n"
-            f"IMPORTANT: You MUST call scratchpad_add for every significant finding. "
-            f"Log the raw data first, then write your analysis. "
-            f"Be factual with names, dates, and numbers."
+        system_prompt = render_prompt(
+            "default_worker",
+            worker_name=worker_name,
+            goal=goal,
+            angle=angle,
+            tools=", ".join(tool_names),
         )
 
     start = time.time()
@@ -114,11 +108,13 @@ def run_worker(
 
         for tc in tool_calls:
             fn_name = tc["function"]["name"]
+            args = tc["function"].get("arguments", {})
             progress("worker_tool_call", {
                 "worker_id": task_id,
                 "name": worker_name,
                 "tool": fn_name,
                 "bundle": tool_bundle,
+                "args": args,
             })
             result_content = registry.execute(
                 fn_name,
@@ -183,8 +179,8 @@ def run_worker(
                 fb_payload = {
                     "model": fb_model,
                     "messages": [
-                        {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": f"Answer this question concisely: {goal}"}
+                        {"role": "system", "content": render_prompt("fallback_system")},
+                        {"role": "user", "content": render_prompt("fallback_user", goal=goal)}
                     ],
                     "stream": False,
                     "options": {"num_predict": 1024},

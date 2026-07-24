@@ -158,13 +158,15 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base, num_workers=num_workers)
     strategies = preflight["strategies"]
     answer_type = preflight["answer_type"]
+    research_mode = preflight.get("research_mode", "objective")
     bundle_assignments = preflight.get("bundles", ["default"] * num_workers)
     execution_mode = preflight.get("mode", "parallel")
     depends_on = preflight.get("depends_on", [None] * num_workers)
-    print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | {len(strategies)} strategies", file=sys.stderr)
+    print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | Research mode: {research_mode} | {len(strategies)} strategies", file=sys.stderr)
     print(f"  [PREFLIGHT] Assigned bundles: {', '.join(bundle_assignments)}", file=sys.stderr)
     progress_callback("preflight_done", {
         "answer_type": answer_type,
+        "research_mode": research_mode,
         "mode": execution_mode,
         "bundles": bundle_assignments,
         "depends_on": depends_on,
@@ -192,7 +194,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
             w_model = model or default_worker or "gpt-oss:120b-cloud"
             w_name = f"Worker {i+1}"
 
-        prompt = build_worker_prompt(goal, strategy, answer_type, w_name, tool_bundle=tool_bundle)
+        prompt = build_worker_prompt(goal, strategy, answer_type, w_name, tool_bundle=tool_bundle, research_mode=research_mode)
         if top_angle:
             prompt += f"\n\nADDITIONAL CONTEXT: {top_angle}"
         prompt = _inject_file_prompt(prompt, tool_bundle, file_path_in_goal)
@@ -239,6 +241,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
         "goal": goal,
         "num_workers": num_workers,
         "models": models_used,
+        "research_mode": research_mode,
         "wall_time_s": round(sum(r["duration_s"] for r in results), 1),
         "workers": results,
         "scratchpad": {

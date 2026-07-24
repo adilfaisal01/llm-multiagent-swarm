@@ -32,8 +32,12 @@ swarm = "swarm.__main__:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["swarm*"]
+
+[tool.setuptools.package-data]
+swarm = ["prompts/*.md"]

@@ -12,6 +12,8 @@ import json
 import re
 import urllib.request
 
+from .prompts import load_prompt, render_prompt
+
 
 # Available tool bundles and what they do — the LLM uses this to assign them
 BUNDLE_INFO = {
@@ -33,6 +35,7 @@ def analyze_question(goal: str, model: str,
     Returns:
         dict with:
         - answer_type: "number", "name", "phrase", "date", "other"
+        - research_mode: "objective" or "subjective"
         - bundles: list of N bundle names, one per worker
         - model_for_bundle: dict mapping bundle name to recommended model
         - strategies: list of N dicts, each with:
@@ -45,56 +48,18 @@ def analyze_question(goal: str, model: str,
         for name, desc in sorted(BUNDLE_INFO.items())
     )
 
-    prompt = (
-        f"You are a research strategist. Analyze this question and generate "
-        f"{num_workers} workers with specific tool bundles.\n\n"
-        f"QUESTION: {goal}\n\n"
-        f"AVAILABLE TOOL BUNDLES:\n"
-        f"{bundle_descriptions}\n\n"
-        f"First, classify the answer type (one of: number, name, phrase, date, other).\n"
-        f"Then decide the execution MODE:\n"
-        f"  - \"parallel\": Workers are independent and can run simultaneously (web research, fact lookup)\n"
-        f"  - \"pipeline\": Workers depend on each other's output (vision reads image → code computes)\n\n"
-        f"For pipeline mode, set depends_on to the index of the worker whose output you need.\n"
-        f"Example:\n"
-        f"  worker 0: vision (reads image, extracts numbers)\n"
-        f"  worker 1: code (depends_on: 0, takes the extracted numbers and computes)\n\n"
-        f"For parallel mode, all workers have depends_on: null.\n\n"
-        f"Then, for each of {num_workers} workers:\n"
-        f"  1. Pick the best bundle from the list above\n"
-        f"  2. Give them a specific search/action plan\n"
-        f"  3. Give them a verification hint\n\n"
-        f"IMPORTANT: Choose bundles that match the question:\n"
-        f"  - Image file? → use \"vision\" bundle for at least one worker\n"
-        f"  - Spreadsheet/doc? → use \"files\" bundle\n"
-        f"  - Needs calculation? → use \"code\" bundle\n"
-        f"  - General web research? → use \"default\" or \"search\" bundle\n\n"
-        f"Respond with ONLY valid JSON in this exact format:\n"
-        f"{{\n"
-        f'  "answer_type": "number|name|phrase|date|other",\n'
-        f'  "mode": "parallel|pipeline",\n'
-        f'  "workers": [\n'
-        f'    {{\n'
-        f'      "bundle": "vision",\n'
-        f'      "depends_on": null,\n'
-        f'      "search_plan": "Read the image using read_image, extract numbers...",\n'
-        f'      "verification_hint": "Cross-check..."\n'
-        f'    }},\n'
-        f'    {{\n'
-        f'      "bundle": "code",\n'
-        f'      "depends_on": 0,\n'
-        f'      "search_plan": "Take extracted numbers and compute...",\n'
-        f'      "verification_hint": "Verify with..."\n'
-        f'    }}\n'
-        f'  ]\n'
-        f"}}\n"
-        f"The workers array must have exactly {num_workers} entries.\n"
+    prompt = render_prompt(
+        "preflight",
+        goal=goal,
+        num_workers=num_workers,
+        bundle_descriptions=bundle_descriptions,
     )
+    system_prompt = load_prompt("preflight_system")
 
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": "You are a precise research strategist. You output JSON only."},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
         "stream": False,
@@ -149,6 +114,7 @@ def analyze_question(goal: str, model: str,
 
                 return {
                     "answer_type": parsed.get("answer_type", "other"),
+                    "research_mode": parsed.get("research_mode", "objective"),
                     "mode": parsed.get("mode", "parallel"),
                     "bundles": valid_bundles,
                     "depends_on": depends_on,
@@ -172,6 +138,7 @@ def analyze_question(goal: str, model: str,
 
                 return {
                     "answer_type": parsed.get("answer_type", "other"),
+                    "research_mode": parsed.get("research_mode", "objective"),
                     "mode": "parallel",
                     "bundles": valid_bundles,
                     "depends_on": [None] * num_workers,
@@ -183,6 +150,7 @@ def analyze_question(goal: str, model: str,
     # Fallback
     return {
         "answer_type": "other",
+        "research_mode": "objective",
         "mode": "parallel",
         "bundles": ["default"] * num_workers,
         "depends_on": [None] * num_workers,
@@ -210,12 +178,14 @@ def _extract_json(text: str) -> dict | None:
 
 
 def build_worker_prompt(goal: str, strategy: dict, answer_type: str,
-                        worker_name: str, tool_bundle: str = "default") -> str:
+                        worker_name: str, tool_bundle: str = "default",
+                        research_mode: str = "objective") -> str:
     """Build a worker system prompt optimized for exact-answer finding.
 
     This is the key difference from the generic prompt: it tells the
     worker what kind of answer to look for and gives them a specific
-    search plan. The rules are customized based on the tool bundle.
+    search plan. The rules are customized based on the tool bundle
+    and the research mode (objective vs subjective).
     """
     answer_type_hints = {
         "number": "The answer is a NUMBER. Be precise. Check for units, commas, and formatting.",
@@ -227,60 +197,21 @@ def build_worker_prompt(goal: str, strategy: dict, answer_type: str,
 
     hint = answer_type_hints.get(answer_type, "The answer is a specific fact. Get the exact wording.")
 
-    # Bundle-specific rules — aggressively force tool use
-    if tool_bundle == "vision":
-        bundle_rules = (
-            f"CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:\n"
-            f"1. CALL read_image NOW with the ATTACHED FILE path.\n"
-            f"2. After reading the image, use scratchpad_add to log the raw data.\n"
-            f"3. If you need to look something up, use web_search and web_extract.\n"
-            f"4. Then state the answer CLEARLY at the TOP of your response.\n"
-            f"5. Then explain your reasoning.\n"
-            f"6. NEVER guess the file contents. You MUST call read_image.\n"
-            f"7. Be precise. Exact names, exact numbers, exact dates.\n"
-        )
-    elif tool_bundle == "code":
-        bundle_rules = (
-            f"CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:\n"
-            f"1. If there is an attached file, CALL read_image or read_file NOW to get the data.\n"
-            f"2. CALL python_exec to run calculations. Do NOT compute in your head.\n"
-            f"3. Use scratchpad_add to log the raw data and results.\n"
-            f"4. Use web_search and web_extract if you need to look up information.\n"
-            f"5. Then state the answer CLEARLY at the TOP of your response.\n"
-            f"6. Then explain your reasoning.\n"
-            f"7. NEVER guess the answer. You MUST call python_exec to compute.\n"
-            f"8. Be precise. Exact numbers.\n"
-        )
-    elif tool_bundle == "files":
-        bundle_rules = (
-            f"CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:\n"
-            f"1. CALL read_file or read_image NOW with the ATTACHED FILE path.\n"
-            f"2. After reading the file, use scratchpad_add to log the raw data.\n"
-            f"3. Use web_search and web_extract if you need to look up additional context.\n"
-            f"4. Then state the answer CLEARLY at the TOP of your response.\n"
-            f"5. Then explain your reasoning.\n"
-            f"6. NEVER guess the file contents. You MUST call read_file or read_image.\n"
-            f"7. Be precise. Exact names, exact numbers, exact dates.\n"
-        )
+    mode_rules = render_prompt(f"mode_{research_mode}")
+    bundle_template = f"bundle_{tool_bundle}"
+    if load_prompt(bundle_template):
+        bundle_rules = render_prompt(bundle_template)
     else:
-        bundle_rules = (
-            f"RULES:\n"
-            f"1. Search the web to find the exact answer. Use web_search and web_extract.\n"
-            f"2. For EVERY search result, use scratchpad_add to log the raw facts, quotes, "
-            f"numbers, and source URLs you find.\n"
-            f"3. After collecting data, state the answer CLEARLY at the TOP of your response.\n"
-            f"4. Then explain your reasoning and cite your sources.\n"
-            f"5. If you find conflicting information, note it and explain why you chose one answer.\n"
-            f"6. Be precise. Exact names, exact numbers, exact dates.\n"
-            f"7. Keep searching until you're confident in the answer.\n"
-        )
+        bundle_rules = render_prompt("bundle_default")
 
-    return (
-        f"You are {worker_name}, a precise fact-finding agent.\n\n"
-        f"QUESTION: {goal}\n\n"
-        f"ANSWER TYPE: {answer_type.upper()}\n"
-        f"{hint}\n\n"
-        f"YOUR ASSIGNED SEARCH STRATEGY:\n{strategy['search_plan']}\n\n"
-        f"VERIFICATION: {strategy.get('verification_hint', 'Verify with a second source.')}\n\n"
-        f"{bundle_rules}"
+    return render_prompt(
+        "worker",
+        worker_name=worker_name,
+        goal=goal,
+        answer_type=answer_type.upper(),
+        answer_hint=hint,
+        search_plan=strategy['search_plan'],
+        verification_hint=strategy.get('verification_hint', 'Verify with a second source.'),
+        mode_rules=mode_rules,
+        bundle_rules=bundle_rules,
     )

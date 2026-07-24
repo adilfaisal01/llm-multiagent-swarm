@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import time
+from pathlib import Path
 
 
 def print_summary(result: dict, *, file=None):
@@ -48,6 +49,9 @@ def print_summary(result: dict, *, file=None):
         print(f"{'─'*55}", file=out)
 
 
+OUTPUT_DIR = Path("swarm_outputs")
+
+
 def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
     """Save full research output to a markdown file.
 
@@ -60,10 +64,11 @@ def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
         The path to the saved file.
     """
     if not filepath:
+        OUTPUT_DIR.mkdir(exist_ok=True)
         safe_name = re.sub(r'[^a-zA-Z0-9]+', '_', goal.strip()[:60]).strip('_')
         if not safe_name:
             safe_name = "swarm_output"
-        filepath = f"swarm_{safe_name}_{int(time.time())}.md"
+        filepath = OUTPUT_DIR / f"swarm_{safe_name}_{int(time.time())}.md"
 
     with open(filepath, "w") as f:
         f.write(f"# Swarm Research: {goal}\n\n")

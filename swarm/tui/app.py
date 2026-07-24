@@ -15,7 +15,7 @@ from ..output import save_markdown
 from ..runner import run_swarm
 from .session import Session
 from .store import SessionStore
-from .widgets import ChatLog, FooterHint, InputBar, SessionList, WorkerGrid
+from .widgets import ChatLog, FooterHint, InputBar, SessionList, SourcesPanel, WorkerGrid
 
 
 class SwarmTUI(App):
@@ -30,13 +30,18 @@ class SwarmTUI(App):
         height: 1fr;
     }
     #sidebar {
-        width: 25%;
+        width: 20%;
         height: 100%;
         border: solid $primary;
     }
     #content {
-        width: 75%;
+        width: 55%;
         height: 100%;
+    }
+    #sources-panel {
+        width: 25%;
+        height: 100%;
+        border: solid $primary;
     }
     """
     BINDINGS = [
@@ -65,6 +70,9 @@ class SwarmTUI(App):
                 yield ChatLog(id="chat-log")
                 yield WorkerGrid(id="worker-grid")
                 yield InputBar(id="input-bar")
+            with Vertical(id="sources-panel"):
+                yield Static("[b]Sources[/b]", id="sources-title")
+                yield SourcesPanel(id="sources-log")
         yield FooterHint()
 
     async def on_mount(self) -> None:
@@ -95,6 +103,8 @@ class SwarmTUI(App):
                 )
         grid = self.query_one("#worker-grid", WorkerGrid)
         grid.clear_workers()
+        sources = self.query_one("#sources-log", SourcesPanel)
+        sources.clear_sources()
         self._refresh_sidebar()
 
     def _refresh_sidebar(self) -> None:
@@ -166,6 +176,8 @@ class SwarmTUI(App):
         chat.add_user(text)
         grid = self.query_one("#worker-grid", WorkerGrid)
         grid.clear_workers()
+        sources = self.query_one("#sources-log", SourcesPanel)
+        sources.clear_sources()
         self.running = True
 
         # Build context from previous run if available
@@ -182,16 +194,17 @@ class SwarmTUI(App):
 
         # Run swarm in a background thread, pumping progress events
         progress = partial(self._sync_progress)
-        self._executor.submit(self._run_swarm_thread, full_goal, progress)
+        self._executor.submit(self._run_swarm_thread, full_goal, text, progress)
         asyncio.create_task(self._drain_events())
 
-    def _run_swarm_thread(self, goal: str, progress) -> None:
+    def _run_swarm_thread(self, goal: str, original_query: str, progress) -> None:
         try:
             result = run_swarm(
                 goal=goal,
                 mix=True,
                 progress_callback=progress,
             )
+            result["_original_query"] = original_query
             progress("final_result", result)
         except Exception as exc:
             progress("error", {"message": str(exc)})
@@ -214,12 +227,17 @@ class SwarmTUI(App):
     async def _handle_event(self, event: str, payload) -> None:
         chat = self.query_one("#chat-log", ChatLog)
         grid = self.query_one("#worker-grid", WorkerGrid)
+        sources = self.query_one("#sources-log", SourcesPanel)
         if event == "preflight_start":
             chat.add_system("Preflight: analyzing question...")
         elif event == "preflight_done":
             mode = payload.get("mode", "parallel")
+            research_mode = payload.get("research_mode", "objective")
             bundles = payload.get("bundles", [])
-            chat.add_system(f"Preflight done — mode: {mode}, bundles: {', '.join(bundles)}")
+            emoji = "🎭" if research_mode == "subjective" else "🔬"
+            chat.add_system(
+                f"Preflight done — mode: {mode}, research: {research_mode} {emoji}, bundles: {', '.join(bundles)}"
+            )
         elif event == "worker_start":
             grid.update_worker(
                 payload["worker_id"],
@@ -244,6 +262,26 @@ class SwarmTUI(App):
                     "rounds": 0,
                 },
             )
+            grid.advance_worker(payload["worker_id"])
+            args = payload.get("args", {})
+            tool = payload.get("tool", "")
+            detail = ""
+            if tool == "web_search":
+                detail = args.get("query", "")
+            elif tool == "web_extract":
+                detail = args.get("url", "")
+            elif tool == "read_image":
+                detail = args.get("path", "") or args.get("question", "")
+            elif tool == "read_file":
+                detail = args.get("path", "")
+            elif tool == "python_exec":
+                detail = args.get("code", "")[:60]
+            if detail:
+                sources.add_source(
+                    payload.get("name", f"Worker {payload['worker_id']}"),
+                    tool,
+                    detail,
+                )
         elif event == "worker_done":
             grid.update_worker(
                 payload["worker_id"],
@@ -282,6 +320,9 @@ class SwarmTUI(App):
                 self.store.save(self.active_session)
                 self._load_sessions()
                 self._refresh_sidebar()
+                original_query = result.pop("_original_query", self.active_session.last_user_query())
+                path = save_markdown(result, original_query or result.get("goal", "swarm"))
+                chat.add_system(f"Auto-saved markdown to {path}")
             input_bar = self.query_one("#input-bar", InputBar)
             input_bar.set_loading("Ready")
             self.running = False

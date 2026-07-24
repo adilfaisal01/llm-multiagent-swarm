@@ -8,6 +8,8 @@ you get a coherent research answer.
 import json
 import urllib.request
 
+from .prompts import render_prompt
+
 
 def synthesize(goal: str, result: dict, model: str,
                ollama_base: str = "http://localhost:11434") -> str:
@@ -44,25 +46,17 @@ def synthesize(goal: str, result: dict, model: str,
             findings_section += f"- [{cat}] {finding[:200]} (source: {src_url[:50]}) — {worker}\n"
         findings_section += "\n"
 
-    prompt = (
-        f"You are the orchestrator of a multi-agent research swarm. "
-        f"Your job is to synthesize the team's findings into a coherent, unified answer.\n\n"
-        f"**Research Question:** {goal}\n\n"
-        f"The team had {result['num_workers']} workers researching different angles of this question. "
-        f"Below are their reports and the raw findings they collected.\n\n"
-        f"---\n\n"
-        f"{worker_section}"
-        f"---\n\n"
-        f"{findings_section}"
-        f"---\n\n"
-        f"Now produce a unified answer that:\n"
-        f"1. Directly answers the research question\n"
-        f"2. Weaves together perspectives from all workers into a coherent narrative\n"
-        f"3. Highlights areas of agreement and disagreement between workers\n"
-        f"4. Identifies the most important insights, not just a summary of each report\n"
-        f"5. Notes any gaps or uncertainties that remain\n\n"
-        f"Write in clear, professional prose. Aim for 2-4 paragraphs. "
-        f"Do NOT start with 'Based on the reports' or 'The team found' — just give the answer."
+    research_mode = result.get("research_mode", "objective")
+    synthesis_instructions = render_prompt(f"synthesis_{research_mode}")
+
+    prompt = render_prompt(
+        "synthesis",
+        goal=goal,
+        research_mode=research_mode.upper(),
+        num_workers=result['num_workers'],
+        worker_section=worker_section,
+        findings_section=findings_section,
+        synthesis_instructions=synthesis_instructions,
     )
 
     payload = {

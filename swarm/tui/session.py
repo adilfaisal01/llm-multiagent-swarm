@@ -29,6 +29,13 @@ class Session:
             self.title = text.strip()[:60] or "New session"
         self.updated_at = time.time()
 
+    def last_user_query(self) -> str:
+        """Return the most recent user message text for clean filenames/context."""
+        for msg in reversed(self.messages):
+            if msg.get("role") == "user":
+                return msg.get("content", "")
+        return ""
+
     def add_orchestrator_message(self, text: str, result: dict[str, Any] | None = None) -> None:
         self.messages.append({
             "role": "orchestrator",
