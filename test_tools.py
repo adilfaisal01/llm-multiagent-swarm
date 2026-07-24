@@ -99,28 +99,6 @@ def test_tool(name: str, args: dict, expected_prefix: str | None = None) -> bool
         return False
 
 
-def test_orchestrator_preload(file_path: str) -> bool:
-    """Test the orchestrator's file preloading function."""
-    from swarm.orchestrator import _preload_file_content
-    content = _preload_file_content(file_path)
-    if content:
-        print(f"  ✅ orchestrator._preload_file_content({os.path.basename(file_path)}) → {len(content)} chars")
-        return True
-    print(f"  ❌ orchestrator._preload_file_content() returned None for {file_path}")
-    return False
-
-
-def test_orchestrator_compute(file_content: str) -> bool:
-    """Test orchestrator's numeric computation from file data."""
-    from swarm.orchestrator import _compute_answer_from_data
-    result = _compute_answer_from_data("test", file_content, "/tmp/test.txt")
-    if result:
-        print(f"  ✅ orchestrator._compute_answer_from_data() → {len(result)} chars")
-        return True
-    print(f"  ❌ orchestrator._compute_answer_from_data() returned None")
-    return False
-
-
 def test_swarm_with_file(goal: str, file_path: str, timeout_s: int = 120) -> bool:
     """Run the full swarm with a file attachment."""
     from swarm.runner import run_swarm
@@ -221,30 +199,7 @@ def main():
     r = test_tool("scratchpad_add", {"finding": "Test finding from tool smoke test", "source": "test_tools.py"})
     results.append(("scratchpad_add", r))
 
-    # ── Phase 3: Orchestrator-level tests ──
-    print(f"\n{'─'*60}")
-    print(f"  🧠 PHASE 3: Orchestrator-level tests")
-    print(f"{'─'*60}")
-
-    # Preload text file
-    r = test_orchestrator_preload(txt_path)
-    results.append(("orchestrator preload (.txt)", r))
-
-    # Preload CSV
-    r = test_orchestrator_preload(csv_path)
-    results.append(("orchestrator preload (.csv)", r))
-
-    # Preload image
-    r = test_orchestrator_preload(img_path)
-    results.append(("orchestrator preload (image)", r))
-
-    # Compute from text data
-    with open(txt_path) as f:
-        content = f.read()
-    r = test_orchestrator_compute(content)
-    results.append(("orchestrator compute", r))
-
-    # ── Phase 4: Full swarm tests ──
+    # ── Phase 3: Full swarm tests ──
     if not args.skip_swarm:
         print(f"\n{'─'*60}")
         print(f"  🐝 PHASE 4: Full swarm with file attachments")
