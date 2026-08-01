@@ -40,3 +40,6 @@ swarm_*.md
 
 # Persistent TUI session database
 swarm_sessions.db
+
+# local codebase index (built by git hook, not committed)
+.codebase/
