@@ -1,0 +1,17 @@
+# FILE: docker-compose.yml (33 lines)
+services:
+  swarm-reverse-engineering:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: swarm-re-demo
+    network_mode: host
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://localhost:11434}
+      SEARCH_BACKEND: ddgs
+    volumes:
+      - ./samples:/app/samples
+      - ./configs:/app/configs
+    stdin_open: true
+    tty: true
+    entrypoint: ["python3", "-m", "swarm", "--tui"]
