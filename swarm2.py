@@ -161,12 +161,12 @@ CONFIG = load_swarm_config()
 # Build WORKER_MODELS from config, fall back to hardcoded defaults
 WORKER_MODELS = CONFIG.get("models", {}) or {
     "ministral": "ministral-3:14b-cloud",
-    "nemotron": "nemotron-3-nano:30b-cloud",
+    "nemotron": "nemotron-3-super:cloud",
     "nemotron-super": "nemotron-3-super:cloud",
     "gpt-oss": "gpt-oss:120b-cloud",
-    "gemma": "gemma4:31b-cloud",
+    "gemma": "minimax-m3:cloud",
     "qwen": "qwen3.5:397b-cloud",
-    "deepseek": "deepseek-v4-flash:cloud",
+    "deepseek": "deepseek-v4-pro:cloud",
     "flash": "deepseek-v4-flash:cloud",
 }
 MODEL_LIST = list(WORKER_MODELS.keys())
