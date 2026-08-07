@@ -2,7 +2,7 @@
 
 Multi-agent research orchestration using Ollama cloud models. Spawn parallel workers with focused research angles, each with web search access, and collect their outputs via a shared scratchpad.
 
-Core library is pure Python stdlib. The optional persistent TUI requires `textual`. Web search works out of the box via DuckDuckGo (no API key, no self-hosting).
+Core library is pure Python stdlib. The optional persistent TUI requires `textual`. Web search works out of the box via DuckDuckGo (the `ddgs` package, no API key, no self-hosting).
 
 ```bash
 # Quick start
@@ -241,7 +241,7 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 
 | Backend | Auth needed | Notes |
 |---------|-------------|-------|
-| `ddgs` | No | **Default.** DuckDuckGo HTML scraping. No API key, no setup. Rate limits may apply. |
+| `ddgs` | No | **Default.** DuckDuckGo via the `ddgs` package (installed by default). No API key, no setup. Rate limits may apply. |
 | `searxng` | No (self-hosted) | Point `SEARXNG_URL` at your instance. |
 | `google` | `SEARCH_API_KEY` + `GOOGLE_CX` | Google Custom Search JSON API. 100 free queries/day. |
 
@@ -318,18 +318,40 @@ If a model exhausts all tool rounds without producing a final answer, the script
 
 For **pipeline mode**, workers execute in stages: a vision worker reads an image, then a code worker computes from the extracted data. Previous worker output is injected into downstream workers' prompts.
 
-### Smoke test
+### Testing
+
+The Makefile is the canonical entry point. All `test-*` targets accept a verbosity flag: default is quiet (compact one-liner per module), `V=1` prints the grouped colored summary, `V=2` prints the raw per-test trace. Full guide: `docs/TESTING.md`.
+
+```bash
+make test                 # tool smoke + full grouped summary (default)
+make test-tool-unit       # hermetic per-tool tests (mocked network/Ollama), quiet
+make test-tool-unit V=1   # grouped summary per tool
+make test-tools           # live smoke (real ddgs + Ollama)
+make test-summary         # all hermetic suites, grouped summary
+make test-ci              # mirror GitHub Actions CI exactly
+```
+
+Live smoke slice flags (`test_tools.py`):
 
 ```bash
 python3 test_tools.py                    # Quick tool smoke test
 python3 test_tools.py --verbose          # Show full tool outputs
 python3 test_tools.py --samples=100      # Bigger test files
 python3 test_tools.py --skip-swarm       # Skip full swarm tests (faster)
+python3 test_tools.py --skill vision     # Only the tools a skill grants
+python3 test_tools.py --tool web_search  # Only one tool
+```
+
+The smoke script hits live `ddgs` and Ollama. For hermetic, offline per-tool tests (all network/Ollama calls mocked), run the unittest suite:
+
+```bash
+python3 -m unittest tests.test_tools -v   # Per-tool hermetic tests
+python3 -m unittest discover tests/       # Full hermetic suite
 ```
 
 ## Performance
 
-Parallel swarm is **3.3-3.4× faster** than sequential execution. See `BENCHMARK.md` for full results.
+Parallel swarm is **3.3-3.4× faster** than sequential execution. See `docs/BENCHMARK.md` for full results.
 
 | Mode | Easy query | Hard query |
 |------|-----------|------------|
@@ -480,12 +502,15 @@ Run with `python3 -m swarm --tui`:
 │   ├── output.py
 │   └── tools.py           # Monolithic tool file (pre-modular)
 ├── test_tools.py            # Tool smoke test (random files, all tool paths)
-├── swarm2.py                # Legacy monolith (preserved, pre-demo)
+├── legacy/                  # Pre-modular monoliths (preserved for reference)
+│   ├── swarm2.py            # Legacy monolith (pre-demo, single-file swarm)
+│   └── swarm.py             # Minimal version (no web search)
+├── docs/                    # Documentation
+│   ├── TESTING.md           # Testing workflow (make targets + verbosity flag)
+│   └── BENCHMARK.md         # Benchmark results
 ├── swarm_config.json        # Configurable team, models, prompts
-├── swarm.py                 # Minimal version (no web search)
 ├── gaia_eval.py             # GAIA benchmark eval harness
 ├── SCRATCHPAD.md            # Scratchpad architecture docs
-├── BENCHMARK.md             # Benchmark results
 ├── benchmark.py             # Benchmark script (library-based)
 ├── benchmark_hard.py        # Hard query benchmark (library-based)
 ├── CHAOS_MONKEY_RESULTS.md  # Chaos monkey test results

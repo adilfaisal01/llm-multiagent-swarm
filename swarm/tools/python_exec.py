@@ -10,6 +10,17 @@ from .base import BaseTool
 
 
 class PythonExec(BaseTool):
+    """Execute Python code in a sandboxed context.
+
+    Runs the supplied code with a restricted set of builtins and modules
+    (math, statistics, json, re, collections, itertools, functools). File
+    access, ``eval``, and nested ``exec`` are denied. Output is captured
+    from ``print()``.
+
+    WARNING: This allows arbitrary code execution. Only use in trusted
+    environments.
+    """
+
     name = "python_exec"
     description = (
         "Execute Python code and return the output. Use this for "
@@ -75,6 +86,18 @@ class PythonExec(BaseTool):
     }
 
     def run(self, args: dict, worker_name: str = "") -> str:
+        """Execute the supplied Python code.
+
+        Args:
+            args: Tool arguments. Must contain ``code`` (the Python source
+                to execute).
+            worker_name: Unused by this tool; accepted for interface parity.
+
+        Returns:
+            Captured stdout, or ``(no output — use print() to show results)``
+            if the code printed nothing. On error, returns the partial output
+            plus an ``Error:`` line.
+        """
         code = args.get("code", "")
         if not code:
             return "Error: no code provided"

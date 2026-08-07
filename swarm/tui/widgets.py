@@ -22,6 +22,11 @@ class SessionList(ListView):
         self.sessions: list[dict] = []
 
     def refresh_sessions(self, sessions: list[dict]) -> None:
+        """Rebuild the list from a collection of session dicts.
+
+        Args:
+            sessions: List of session dicts, each with ``title`` and ``id``.
+        """
         self.sessions = sessions
         self.clear()
         for s in sessions:
@@ -46,15 +51,37 @@ class ChatLog(RichLog):
         super().__init__(highlight=True, markup=True, wrap=True, **kwargs)
 
     def add_user(self, text: str) -> None:
+        """Log a user message.
+
+        Args:
+            text: The user's message text.
+        """
         self.write(f"[b][#A78BFA]You:[/] {text}[/b]")
 
     def add_orchestrator(self, text: str) -> None:
+        """Log an orchestrator message.
+
+        Args:
+            text: The orchestrator's message text.
+        """
         self.write(f"[#FBBF24]🎯 Orchestrator:[/] {text}")
 
     def add_system(self, text: str) -> None:
+        """Log a system/info message.
+
+        Args:
+            text: The system message text.
+        """
         self.write(f"[#6EE7B7]ℹ {text}[/]")
 
     def add_worker(self, name: str, status: str, detail: str = "") -> None:
+        """Log a worker activity line.
+
+        Args:
+            name: Worker name.
+            status: Worker status (e.g. ``ok``, ``searching``).
+            detail: Optional extra detail (query, URL, etc.).
+        """
         self.write(f"[#38BDF8]🐝 {name}[/] [{status}] {detail}")
 
 
@@ -91,11 +118,18 @@ class WorkerCard(Horizontal):
         self.status_label = Static("idle", id="worker-status")
 
     def compose(self):
+        """Yield the worker card's child widgets."""
         yield self.name_label
         yield self.progress
         yield self.status_label
 
     def update(self, data: dict) -> None:
+        """Refresh the card from a worker status dict.
+
+        Args:
+            data: Dict with optional keys ``name``, ``model``, ``bundle``,
+                ``status``, ``duration_s``, and ``rounds``.
+        """
         name = data.get("name", f"Worker {self.worker_id}")
         model = data.get("model", "").split(":")[0]
         bundle = data.get("bundle", "default")
@@ -108,6 +142,7 @@ class WorkerCard(Horizontal):
         )
 
     def advance(self) -> None:
+        """Advance the progress bar by one tool round."""
         self.progress.advance(1)
 
 
@@ -128,6 +163,12 @@ class WorkerGrid(Vertical):
         self._cards: dict[int, WorkerCard] = {}
 
     def update_worker(self, worker_id: int, data: dict) -> None:
+        """Create or update a worker card.
+
+        Args:
+            worker_id: The worker's numeric id.
+            data: Worker status dict (see WorkerCard.update).
+        """
         if worker_id not in self._cards:
             card = WorkerCard(worker_id)
             self._cards[worker_id] = card
@@ -135,11 +176,17 @@ class WorkerGrid(Vertical):
         self._cards[worker_id].update(data)
 
     def advance_worker(self, worker_id: int) -> None:
+        """Advance a worker's progress bar by one round.
+
+        Args:
+            worker_id: The worker's numeric id.
+        """
         card = self._cards.get(worker_id)
         if card:
             card.advance()
 
     def clear_workers(self) -> None:
+        """Remove all worker cards."""
         for card in self._cards.values():
             card.remove()
         self._cards.clear()
@@ -169,11 +216,17 @@ class InputBar(Horizontal):
         self.status_label = Label("⚡ Ready", id="status-label")
 
     def compose(self):
+        """Yield the input bar's child widgets."""
         yield self.input
         yield self.submit
         yield self.status_label
 
     def set_loading(self, text: str) -> None:
+        """Update the status label (e.g. while a swarm run is in progress).
+
+        Args:
+            text: The status text to display.
+        """
         self.status_label.update(text)
 
 
@@ -193,9 +246,17 @@ class SourcesPanel(RichLog):
         super().__init__(highlight=True, markup=True, wrap=True, **kwargs)
 
     def add_source(self, worker: str, tool: str, detail: str) -> None:
+        """Log a source/tool-call line.
+
+        Args:
+            worker: Worker name.
+            tool: Tool name (e.g. ``web_search``).
+            detail: Query or URL detail.
+        """
         self.write(f"[#38BDF8]{worker}[/] [{tool}] {detail}")
 
     def clear_sources(self) -> None:
+        """Clear all logged sources."""
         self.clear()
 
 

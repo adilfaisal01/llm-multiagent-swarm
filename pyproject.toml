@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "textual>=0.70.0",
+    "ddgs>=9.0.0",
 ]
 
 [project.scripts]

@@ -18,6 +18,15 @@ from .runner import run_swarm
 
 
 def main(argv=None):
+    """CLI entry point: parse args, run the swarm, and print/save output.
+
+    Args:
+        argv: Optional argument list (defaults to ``sys.argv[1:]``).
+
+    Returns:
+        None. Exits with status 1 on invalid input (empty goal or
+        conflicting ``--skill``/``--config``).
+    """
     ap = argparse.ArgumentParser(description="Swarm v2 with web search and mixed models")
     ap.add_argument("--goal", default=None,
                     help="Research question (optional if config file has 'goal' field)")

@@ -138,7 +138,7 @@ This solved the "essay-writing" problem — workers actually use their tools now
 - Force-synthesis: if exhausted, sends "synthesize your findings" → "STOP SEARCHING" → fallback model
 
 ### Search backends
-- `ddgs` (default — DuckDuckGo, no setup, works out of the box)
+- `ddgs` (default — DuckDuckGo via the `ddgs` package, declared as a hard dependency in `pyproject.toml`/`requirements.txt`)
 - `searxng` (self-hosted at localhost:8080, higher rate limits)
 - `google` (requires API key + CX)
 
@@ -164,15 +164,47 @@ The original pre-modular swarm is in `demo-swarm/` for reference:
 python3 -m demo-swarm --goal "Your question" --mix
 ```
 
+The pre-modular root monoliths (`swarm2.py`, `swarm.py`) are preserved in `legacy/` for historical reference. They are not imported by the package and are not maintained.
+
 ## Testing
 
+The Makefile is the canonical entry point. All `test-*` targets accept a verbosity flag: default is quiet (compact one-liner per module), `V=1` prints the grouped colored summary, `V=2` prints the raw per-test trace. Full guide: `docs/TESTING.md`.
+
 ```bash
-python3 test_tools.py              # Tool smoke test (11/12 pass)
-bash chaos_monkey.sh               # 15 chaos monkey tests
-python3 -m unittest discover tests/ # Hermetic unit + functional tests
-pytest tests/                       # Same tests via pytest
-python3 tests/summary_runner.py     # Organized grouped summary (make test-summary)
+make test                 # tool smoke + full grouped summary (default)
+make test-summary         # all hermetic suites, grouped summary
+make test-summary V=1     # per-test ✓/✗/⏭ breakdown
+make test-summary V=2     # raw unittest -v trace
+
+# Per-tool
+make test-tool-unit       # hermetic per-tool tests (mocked network/Ollama), quiet
+make test-tool-unit V=1   # grouped summary per tool
+make test-tool-unit V=2   # raw trace
+make test-tools           # live smoke (real ddgs + Ollama)
+
+# Per-suite
+make test-skills          # skill system unit tests
+make test-skills V=1      # grouped summary
+
+# Full hermetic suites
+make test-unit            # unittest discover (quiet dots)
+make test-unit V=1        # per-test names
+make test-pytest          # pytest
+make test-pytest V=2      # pytest -vv
+
+# CI mirror + end-to-end
+make test-ci              # mirror GitHub Actions CI exactly
+make test-e2e             # Ollama-dependent end-to-end (needs Ollama running)
+
+# Live smoke slice flags (test_tools.py)
+python3 test_tools.py --skill vision      # only the tools a skill grants
+python3 test_tools.py --tool web_search  # only one tool
+
+# Chaos monkey
+bash chaos_monkey.sh      # 15 adversarial CLI tests
 ```
+
+The hermetic per-tool suite (`tests/test_tools.py`) mocks all network and Ollama calls and is the fastest feedback loop during tool or skill development — run `make test-tool-unit`.
 
 ## CI
 
@@ -189,6 +221,7 @@ The test suite under `tests/` covers:
 - Prompt template loading and rendering
 - TUI session model + SQLite persistence
 - CLI argument validation
+- Hermetic per-tool tests (`tests.test_tools` — every tool in isolation, mocked network/Ollama)
 - Adversarial cases derived from `chaos_monkey.sh` (empty goal, unicode, missing config, etc.)
 
 ## Auto-Testing on Commit

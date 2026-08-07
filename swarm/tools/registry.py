@@ -62,9 +62,22 @@ class ToolRegistry:
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> BaseTool | None:
+        """Return a registered tool by name.
+
+        Args:
+            name: The tool identifier (e.g. ``web_search``).
+
+        Returns:
+            The matching BaseTool, or None if not registered.
+        """
         return self._tools.get(name)
 
     def get_tools(self) -> list[BaseTool]:
+        """Return all registered tool instances.
+
+        Returns:
+            A list of BaseTool instances.
+        """
         return list(self._tools.values())
 
     def get_ollama_tools(self) -> list[dict]:

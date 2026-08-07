@@ -7,6 +7,13 @@ from .base import BaseTool
 
 
 class WebSearch(BaseTool):
+    """Search the web using the configured backend.
+
+    Runs the query through the backend selected by ``SEARCH_BACKEND``
+    (default ``ddgs``) and auto-logs the query and any result URLs to the
+    shared scratchpad.
+    """
+
     name = "web_search"
     description = "Search the web for current information"
     parameters = {
@@ -18,6 +25,17 @@ class WebSearch(BaseTool):
     }
 
     def run(self, args: dict, worker_name: str = "") -> str:
+        """Execute a web search.
+
+        Args:
+            args: Tool arguments. Must contain ``query`` (the search string).
+            worker_name: Name of the worker making the call, used for
+                scratchpad attribution.
+
+        Returns:
+            Formatted search results, or an error string starting with
+            ``Error:`` / ``[Search error:`` on failure.
+        """
         query = args.get("query", "")
         if not query:
             return "Error: no query provided"
@@ -28,14 +46,16 @@ class WebSearch(BaseTool):
         sp = get_scratchpad()
         if sp:
             sp.add_finding(worker_name, f"Search: {query}", "", "search", "high")
-            for line in result.split("\n"):
-                line = line.strip()
-                if line.startswith("- ") and "http" in line:
-                    parts = line.rsplit("  ", 1)
-                    if len(parts) == 2:
-                        url = parts[-1].strip()
-                        snippet = parts[0][2:].strip()
-                        sp.add_source(worker_name, url, snippet[:200], snippet[:200])
+            lines = [ln.strip() for ln in result.split("\n")]
+            for i, line in enumerate(lines):
+                if not line.startswith("- ") or "http" in line:
+                    continue
+                url = ""
+                if i + 1 < len(lines) and "http" in lines[i + 1]:
+                    url = lines[i + 1]
+                snippet = line[2:].strip()
+                if url:
+                    sp.add_source(worker_name, url, snippet[:200], snippet[:200])
         return result
 
 

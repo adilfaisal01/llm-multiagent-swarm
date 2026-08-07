@@ -61,6 +61,7 @@ class SwarmTUI(App):
         self._event_queue: asyncio.Queue | None = None
 
     def compose(self) -> ComposeResult:
+        """Build the three-pane layout: sessions sidebar, chat + workers, sources."""
         yield Header(show_clock=True)
         with Horizontal(id="main-row"):
             with Vertical(id="sidebar"):
@@ -76,6 +77,7 @@ class SwarmTUI(App):
         yield FooterHint()
 
     async def on_mount(self) -> None:
+        """Initialize the event queue and load or create the first session."""
         self._event_queue = asyncio.Queue()
         self._load_sessions()
         if not self.sessions:
@@ -84,6 +86,11 @@ class SwarmTUI(App):
             self.active_session = self.sessions[0]
 
     async def watch_active_session(self, session: Session | None) -> None:
+        """Rebuild the chat log and panels when the active session changes.
+
+        Args:
+            session: The newly active session, or None.
+        """
         if session is None:
             return
         chat = self.query_one("#chat-log", ChatLog)
@@ -127,9 +134,11 @@ class SwarmTUI(App):
         chat.add_system("New session started. Ask the swarm a question.")
 
     def action_new_session(self) -> None:
+        """Create a new session (Ctrl+N)."""
         asyncio.create_task(self._new_session())
 
     def action_save_session(self) -> None:
+        """Export the current run to markdown (Ctrl+S)."""
         if not self.active_session:
             return
         result = self.active_session.last_result()
@@ -142,6 +151,11 @@ class SwarmTUI(App):
         chat.add_system(f"Saved markdown to {path}")
 
     def on_list_view_selected(self, event) -> None:
+        """Load the selected session from the sidebar.
+
+        Args:
+            event: The ListView selection event.
+        """
         item = event.item
         if not item:
             return
@@ -151,10 +165,20 @@ class SwarmTUI(App):
             self.active_session = session
 
     def on_button_pressed(self, event) -> None:
+        """Handle submit button presses.
+
+        Args:
+            event: The Button.Pressed event.
+        """
         if event.button.id == "submit-btn":
             self._submit_query()
 
     def on_input_submitted(self, event) -> None:
+        """Handle Enter in the query input.
+
+        Args:
+            event: The Input.Submitted event.
+        """
         if event.input.id == "query-input":
             self._submit_query()
 
@@ -333,6 +357,7 @@ class SwarmTUI(App):
             self.running = False
 
     async def action_quit(self) -> None:
+        """Shut down the worker executor and quit (Ctrl+Q)."""
         self._executor.shutdown(wait=False)
         await super().action_quit()
 

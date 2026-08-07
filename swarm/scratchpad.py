@@ -95,4 +95,5 @@ class Scratchpad:
         }
 
     def close(self):
+        """Close the underlying SQLite connection."""
         self._conn.close()

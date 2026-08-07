@@ -7,6 +7,13 @@ from .base import BaseTool
 
 
 class WebExtract(BaseTool):
+    """Fetch a URL and extract its text content.
+
+    Downloads the page, strips HTML tags, collapses whitespace, and returns
+    the first 3000 characters. The URL and a finding are auto-logged to the
+    shared scratchpad.
+    """
+
     name = "web_extract"
     description = "Extract content from a URL"
     parameters = {
@@ -18,6 +25,17 @@ class WebExtract(BaseTool):
     }
 
     def run(self, args: dict, worker_name: str = "") -> str:
+        """Extract text from a URL.
+
+        Args:
+            args: Tool arguments. Must contain ``url``.
+            worker_name: Name of the worker making the call, used for
+                scratchpad attribution.
+
+        Returns:
+            Cleaned page text (up to 3000 chars), or an error string
+            starting with ``Error:`` / ``[Extract error:`` on failure.
+        """
         url = args.get("url", "")
         if not url:
             return "Error: no URL provided"

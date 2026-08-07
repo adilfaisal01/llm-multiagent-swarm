@@ -9,6 +9,13 @@ from .base import BaseTool
 
 
 class ReadFile(BaseTool):
+    """Read a structured file from disk and return its contents as text.
+
+    Supports .txt, .csv, .json, .jsonld, .xml, .py, .md, .docx (text
+    extract), and .xlsx. Used when the question refers to an attached
+    file, spreadsheet, or data file.
+    """
+
     name = "read_file"
     description = (
         "Read a file from disk and return its contents as text. "
@@ -32,6 +39,17 @@ class ReadFile(BaseTool):
     }
 
     def run(self, args: dict, worker_name: str = "") -> str:
+        """Read a file and return its contents.
+
+        Args:
+            args: Tool arguments. ``path`` is required (absolute path);
+                ``max_chars`` caps the returned length (default 5000).
+            worker_name: Unused by this tool; accepted for interface parity.
+
+        Returns:
+            The file contents as text, or an error string starting with
+            ``Error:`` / ``[ReadFile error:`` on failure.
+        """
         path = args.get("path", "")
         max_chars = int(args.get("max_chars", 5000))
 

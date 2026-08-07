@@ -167,6 +167,11 @@ class SkillRegistry:
         self._tool_registry = tool_registry
 
     def set_tool_registry(self, tool_registry: "ToolRegistry") -> None:
+        """Wire a ToolRegistry so skill tool names can be resolved to instances.
+
+        Args:
+            tool_registry: The registry holding all discovered tools.
+        """
         self._tool_registry = tool_registry
 
     def discover(self, root: str | Path | None = None) -> None:
@@ -192,12 +197,30 @@ class SkillRegistry:
             self._skills[skill.name] = skill
 
     def get(self, name: str) -> Skill | None:
+        """Return a skill by name, or None if it is not registered.
+
+        Args:
+            name: The skill identifier.
+
+        Returns:
+            The matching Skill, or None.
+        """
         return self._skills.get(name)
 
     def all(self) -> list[Skill]:
+        """Return all registered skills.
+
+        Returns:
+            A list of Skill instances.
+        """
         return list(self._skills.values())
 
     def names(self) -> list[str]:
+        """Return the sorted names of all registered skills.
+
+        Returns:
+            Sorted list of skill identifiers.
+        """
         return sorted(self._skills.keys())
 
     def descriptions_for_llm(self) -> str:

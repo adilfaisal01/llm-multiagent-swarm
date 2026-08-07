@@ -8,6 +8,13 @@ from .base import BaseTool
 
 
 class ReadImage(BaseTool):
+    """Read an image file and extract its visual contents.
+
+    Sends the image (base64-encoded) to the Gemma4 vision model via Ollama
+    and returns the model's description. Used for questions that reference
+    an image, screenshot, chart, or figure.
+    """
+
     name = "read_image"
     description = (
         "Read an image file and extract its contents (text, numbers, "
@@ -30,6 +37,18 @@ class ReadImage(BaseTool):
     }
 
     def run(self, args: dict, worker_name: str = "") -> str:
+        """Read an image via the vision model.
+
+        Args:
+            args: Tool arguments. ``path`` is required (absolute path to a
+                .png/.jpg/.jpeg file); ``question`` is an optional prompt
+                about the image content.
+            worker_name: Unused by this tool; accepted for interface parity.
+
+        Returns:
+            The vision model's description, or an error string starting
+            with ``Error:`` / ``[ReadImage error:`` on failure.
+        """
         path = args.get("path", "")
         question = args.get("question", "Describe what you see in this image in detail.")
 

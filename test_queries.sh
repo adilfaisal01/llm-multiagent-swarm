@@ -26,7 +26,7 @@ for i in "${!QUERIES[@]}"; do
   echo "═══════════════════════════════════════════════════"
   echo ""
   
-  python3 swarm2.py --goal "${QUERIES[$i]}" --mix 2>&1 | tee "/tmp/swarm-${LABELS[$i]}.log"
+  python3 -m swarm --goal "${QUERIES[$i]}" --mix 2>&1 | tee "/tmp/swarm-${LABELS[$i]}.log"
   
   echo ""
   echo "  ✓ Done with ${LABELS[$i]}"

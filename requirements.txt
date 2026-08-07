@@ -1,5 +1,6 @@
-# Core runtime dependency (TUI only — the swarm core is pure stdlib)
+# Core runtime dependencies
 textual>=0.70.0
+ddgs>=9.0.0
 
 # Development / test dependencies
 pytest>=8.0

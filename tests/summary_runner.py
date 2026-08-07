@@ -3,25 +3,21 @@
 Usage:
     python3 tests/summary_runner.py
     python3 tests/summary_runner.py tests.test_skills tests.test_prompts
+    python3 tests/summary_runner.py -v tests.test_tools
+    python3 tests/summary_runner.py -vv tests.test_tools
 
 Runs the given unittest modules (default: all hermetic suites under tests/),
-captures per-test output, and prints a grouped summary:
+captures per-test output, and prints a grouped summary.
 
-    PASS tests.test_skills  (33 ✓, 0 ✗, 0 skipped)
-      TestFrontmatterParser
-        ✓ test_parses_scalars_and_lists
-      TestParallelRunnerQueue
-        ✓ test_six_workers_all_complete_with_five_concurrent
-
-    FAIL tests.test_argparse  (4 ✓, 1 ✗, 0 skipped)
-      TestArgumentValidation
-        ✓ test_main_parses_common_args
-        ✗ test_tui_flag_routes_to_tui
-            → AttributeError: module 'swarm' has no attribute 'tui'
-
-    FAIL tests.test_tui  (import error)
-      Module
-        ✗ ModuleNotFoundError: No module named 'textual'
+Verbosity levels (default is quiet):
+    (none)  one compact line per module:  PASS tests.test_skills  (33 ✓, 0 ✗, 0 skipped)
+    -v      full grouped summary with per-suite / per-test breakdown:
+                PASS tests.test_skills  (33 ✓, 0 ✗, 0 skipped)
+                  TestFrontmatterParser
+                    ✓ test_parses_scalars_and_lists
+                  TestParallelRunnerQueue
+                    ✓ test_six_workers_all_complete_with_five_concurrent
+    -vv     raw `unittest -v` per-test trace (full debugging detail)
 
 Colors: green for pass, red for fail/error, yellow for skip. Colors are
 auto-disabled when stdout is not a TTY. Modules that cannot import (e.g.
@@ -30,8 +26,10 @@ missing optional deps) are shown as a FAIL suite entry instead of aborting.
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import io
+import subprocess
 import sys
 import traceback
 import unittest
@@ -128,14 +126,26 @@ def _print_suite(name: str) -> None:
 
 
 def main() -> int:
-    modules = sys.argv[1:] or [
+    ap = argparse.ArgumentParser(description="Grouped, colored test summary runner")
+    ap.add_argument("-v", "--verbose", action="count", default=0,
+                    help="Increase verbosity: -v = grouped per-test summary, -vv = raw unittest trace")
+    ap.add_argument("modules", nargs="*", help="Test modules to run (default: all hermetic suites)")
+    args = ap.parse_args()
+
+    modules = args.modules or [
         "tests.test_argparse",
         "tests.test_chaos",
         "tests.test_e2e",
         "tests.test_prompts",
         "tests.test_skills",
+        "tests.test_tools",
         "tests.test_tui",
     ]
+
+    if args.verbose >= 2:
+        # Raw unittest -v trace for full debugging detail.
+        cmd = [sys.executable, "-m", "unittest", "-v", *modules]
+        return subprocess.call(cmd)
 
     print(_color("⚙  SWARM TEST SUMMARY", DIM))
     print()
@@ -165,10 +175,11 @@ def main() -> int:
         status_label = _color("PASS", GREEN) if n_fail == 0 else _color("FAIL", RED)
         print(f"{status_label} {mod}  ({n_ok} ✓, {n_fail} ✗, {n_skip} skipped)")
 
-        for suite, tests in results.items():
-            _print_suite(suite)
-            for name, (status_, reason) in tests.items():
-                _print_test(name, status_, reason)
+        if args.verbose >= 1:
+            for suite, tests in results.items():
+                _print_suite(suite)
+                for name, (status_, reason) in tests.items():
+                    _print_test(name, status_, reason)
         print()
 
     total = grand_ok + grand_fail + grand_skip

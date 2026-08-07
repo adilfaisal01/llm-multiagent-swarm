@@ -6,6 +6,12 @@ Usage:
     python3 test_tools.py                # quick test (small files)
     python3 test_tools.py --verbose      # show all tool outputs
     python3 test_tools.py --samples=100  # bigger test image
+    python3 test_tools.py --skill vision # only the tools a skill grants
+    python3 test_tools.py --tool web_search  # only one tool
+    python3 test_tools.py --skill research --skip-swarm  # slice, no full swarm
+
+This is the LIVE smoke script (real ddgs + real Ollama). For hermetic,
+offline per-tool tests, run: python3 -m unittest tests.test_tools
 """
 
 import argparse
@@ -99,6 +105,39 @@ def test_tool(name: str, args: dict, expected_prefix: str | None = None) -> bool
         return False
 
 
+def smoke_cases(txt_path: str, csv_path: str, img_path: str) -> list[tuple[str, str, dict]]:
+    """Return (label, tool_name, args) smoke cases for every tool."""
+    return [
+        ("read_file (.txt)", "read_file", {"path": txt_path, "max_chars": 2000}),
+        ("read_file (.csv)", "read_file", {"path": csv_path, "max_chars": 2000}),
+        ("read_image (.ppm)", "read_image", {
+            "path": img_path,
+            "question": "What patterns do you see in this image? Describe the colors.",
+        }),
+        ("python_exec (basic)", "python_exec", {
+            "code": "import math; print(f'pi={math.pi:.4f}, sqrt(144)={math.sqrt(144):.0f}')",
+        }),
+        ("python_exec (stats)", "python_exec", {
+            "code": "import statistics, math; data=[1,2,3,4,5,6,7,8,9,10]; print(f'mean={statistics.mean(data):.2f}, stdev={statistics.stdev(data):.2f}')",
+        }),
+        ("web_search", "web_search", {"query": "capital of France"}),
+        ("scratchpad_add", "scratchpad_add", {
+            "finding": "Test finding from tool smoke test",
+            "source": "test_tools.py",
+        }),
+    ]
+
+
+def resolve_skill_tools(skill_name: str) -> list[str]:
+    """Return the tool names a skill grants, or [] if the skill is unknown."""
+    from swarm.skills import get_skill_registry
+    sr = get_skill_registry()
+    if sr.get(skill_name) is None:
+        print(f"  {FAIL} Unknown skill '{skill_name}'. Available: {', '.join(sr.names())}")
+        return []
+    return [t.name for t in sr.tools_for(skill_name)]
+
+
 def test_swarm_with_file(goal: str, file_path: str, timeout_s: int = 120) -> bool:
     """Run the full swarm with a file attachment."""
     from swarm.runner import run_swarm
@@ -135,6 +174,10 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Show full tool outputs")
     parser.add_argument("--samples", type=int, default=30, help="Number of data points in test files")
     parser.add_argument("--skip-swarm", action="store_true", help="Skip full swarm tests (faster)")
+    parser.add_argument("--skill", default=None,
+                        help="Only smoke-test the tools granted by this skill (e.g. vision, code, files)")
+    parser.add_argument("--tool", default=None,
+                        help="Only smoke-test this single tool (e.g. web_search, read_file)")
     args = parser.parse_args()
 
     VERBOSE = args.verbose
@@ -143,6 +186,10 @@ def main():
     print(f"\n{'='*60}")
     print(f"  🛠️  TOOL SMOKE TEST")
     print(f"  Samples: {N_SAMPLES} | Verbose: {VERBOSE} | Skip swarm: {args.skip_swarm}")
+    if args.skill:
+        print(f"  Skill slice: {args.skill}")
+    if args.tool:
+        print(f"  Tool slice: {args.tool}")
     print(f"{'='*60}")
 
     results = []
@@ -164,43 +211,30 @@ def main():
     print(f"  🔧 PHASE 2: Direct tool tests")
     print(f"{'─'*60}")
 
-    # read_file on text
-    r = test_tool("read_file", {"path": txt_path, "max_chars": 2000})
-    results.append(("read_file (.txt)", r))
+    cases = smoke_cases(txt_path, csv_path, img_path)
 
-    # read_file on CSV
-    r = test_tool("read_file", {"path": csv_path, "max_chars": 2000})
-    results.append(("read_file (.csv)", r))
+    if args.skill:
+        tool_names = resolve_skill_tools(args.skill)
+        if not tool_names:
+            return 1
+        cases = [c for c in cases if c[1] in tool_names]
+        print(f"  Skill '{args.skill}' grants tools: {', '.join(tool_names)}")
+        if not cases:
+            print(f"  {SKIP} No smoke cases cover skill '{args.skill}' tools — "
+                  f"run the hermetic suite instead: python3 -m unittest tests.test_tools")
+    elif args.tool:
+        cases = [c for c in cases if c[1] == args.tool]
+        if not cases:
+            print(f"  {FAIL} No smoke case for tool '{args.tool}'. Known tools: "
+                  f"{', '.join(sorted({c[1] for c in smoke_cases(txt_path, csv_path, img_path)}))}")
+            return 1
 
-    # read_image
-    r = test_tool("read_image", {
-        "path": img_path,
-        "question": "What patterns do you see in this image? Describe the colors."
-    })
-    results.append(("read_image (.ppm)", r))
-
-    # python_exec
-    r = test_tool("python_exec", {
-        "code": "import math; print(f'pi={math.pi:.4f}, sqrt(144)={math.sqrt(144):.0f}')"
-    })
-    results.append(("python_exec (basic)", r))
-
-    # python_exec with stats
-    r = test_tool("python_exec", {
-        "code": "import statistics, math; data=[1,2,3,4,5,6,7,8,9,10]; print(f'mean={statistics.mean(data):.2f}, stdev={statistics.stdev(data):.2f}')"
-    })
-    results.append(("python_exec (stats)", r))
-
-    # web_search
-    r = test_tool("web_search", {"query": "capital of France"})
-    results.append(("web_search", r))
-
-    # scratchpad_add
-    r = test_tool("scratchpad_add", {"finding": "Test finding from tool smoke test", "source": "test_tools.py"})
-    results.append(("scratchpad_add", r))
+    for label, tool_name, tool_args in cases:
+        r = test_tool(tool_name, tool_args)
+        results.append((label, r))
 
     # ── Phase 3: Full swarm tests ──
-    if not args.skip_swarm:
+    if not args.skip_swarm and not args.skill and not args.tool:
         print(f"\n{'─'*60}")
         print(f"  🐝 PHASE 4: Full swarm with file attachments")
         print(f"{'─'*60}")
@@ -219,7 +253,7 @@ def main():
         )
         results.append(("swarm with .csv file", r))
     else:
-        print(f"  {SKIP} Swarm tests skipped (--skip-swarm)")
+        print(f"  {SKIP} Swarm tests skipped (--skip-swarm or slice mode)")
 
     # ── Summary ──
     print(f"\n{'='*60}")

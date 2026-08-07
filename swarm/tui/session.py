@@ -20,6 +20,11 @@ class Session:
     results: list[dict[str, Any]] = field(default_factory=list)
 
     def add_user_message(self, text: str) -> None:
+        """Append a user message and set the session title on first message.
+
+        Args:
+            text: The user's message text.
+        """
         self.messages.append({
             "role": "user",
             "content": text,
@@ -37,6 +42,12 @@ class Session:
         return ""
 
     def add_orchestrator_message(self, text: str, result: dict[str, Any] | None = None) -> None:
+        """Append an orchestrator message and optionally store its result.
+
+        Args:
+            text: The orchestrator's message text.
+            result: Optional swarm result dict to persist for follow-ups.
+        """
         self.messages.append({
             "role": "orchestrator",
             "content": text,
@@ -47,6 +58,11 @@ class Session:
         self.updated_at = time.time()
 
     def add_worker_messages(self, workers: list[dict[str, Any]]) -> None:
+        """Append one message per worker from a swarm result.
+
+        Args:
+            workers: List of worker result dicts from a swarm run.
+        """
         for w in workers:
             self.messages.append({
                 "role": "worker",
@@ -62,6 +78,11 @@ class Session:
         self.updated_at = time.time()
 
     def last_result(self) -> dict[str, Any] | None:
+        """Return the most recent swarm result, or None if none exist.
+
+        Returns:
+            The latest result dict, or None.
+        """
         return self.results[-1] if self.results else None
 
     def context_for_followup(self) -> str:

@@ -41,6 +41,11 @@ class SessionStore:
             conn.commit()
 
     def save(self, session: "Session") -> None:
+        """Upsert a session into the store.
+
+        Args:
+            session: The session to persist (insert or update by id).
+        """
         with self._connect() as conn:
             conn.execute(
                 """
@@ -64,6 +69,14 @@ class SessionStore:
             conn.commit()
 
     def load(self, session_id: str) -> "Session | None":
+        """Load a session by id.
+
+        Args:
+            session_id: The session identifier.
+
+        Returns:
+            The reconstructed Session, or None if not found.
+        """
         from .session import Session
 
         with self._connect() as conn:
@@ -83,6 +96,11 @@ class SessionStore:
         )
 
     def list_sessions(self) -> list["Session"]:
+        """Return all sessions, most recently updated first.
+
+        Returns:
+            A list of Session instances.
+        """
         from .session import Session
 
         with self._connect() as conn:
@@ -102,6 +120,11 @@ class SessionStore:
         ]
 
     def delete(self, session_id: str) -> None:
+        """Delete a session by id.
+
+        Args:
+            session_id: The session identifier to remove.
+        """
         with self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
             conn.commit()
