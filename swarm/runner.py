@@ -105,6 +105,11 @@ def run_swarm(
         num_workers = len(skill_team["team"])
         print(f"  [INFO] Skill '{skill}' ships {num_workers} workers — using full team "
               f"(max 5 run concurrently, rest queue)", file=sys.stderr)
+    elif mix:
+        # Mixed team — default to the full team size so all 5 workers run.
+        num_workers = len(defaults["team"])
+        print(f"  [INFO] --mix with no --workers — using full team of {num_workers}",
+              file=sys.stderr)
     else:
         num_workers = 3
 
