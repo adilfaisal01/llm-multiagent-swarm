@@ -9,7 +9,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from swarm.preflight import _valid_skill, build_worker_prompt
+from swarm.runner import run_swarm
 from swarm.skills import Skill, SkillRegistry, get_skill_registry, reset_skill_registry
 from swarm.skills._base import parse_frontmatter
 from swarm.tools import get_registry, reset_registry
@@ -228,6 +231,147 @@ class TestRegistryWiring(unittest.TestCase):
         names = reg.get_bundle_names()
         self.assertIn("research", names)
         self.assertIn("reverse-engineering", names)
+
+
+class TestSkillPromptInjection(unittest.TestCase):
+    """Verify worker prompts come from skill bodies, not old bundle files."""
+
+    def setUp(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def test_build_worker_prompt_uses_skill_prompt(self):
+        strategy = {
+            "search_plan": "Search the web for the answer.",
+            "verification_hint": "Cross-check with a second source.",
+        }
+        prompt = build_worker_prompt(
+            goal="What is in this image?",
+            strategy=strategy,
+            answer_type="other",
+            worker_name="Vera",
+            tool_bundle="vision",
+            research_mode="objective",
+        )
+        self.assertIn("CALL read_image NOW", prompt)
+        self.assertNotIn("bundle_vision", prompt)
+
+    def test_build_worker_prompt_falls_back_to_default_for_unknown_skill(self):
+        strategy = {"search_plan": "s", "verification_hint": "v"}
+        prompt = build_worker_prompt(
+            goal="g", strategy=strategy, answer_type="other",
+            worker_name="W", tool_bundle="does-not-exist", research_mode="objective",
+        )
+        self.assertTrue(prompt)
+        self.assertIn("web_search", prompt)
+
+
+class TestValidSkillFallback(unittest.TestCase):
+    """Verify unknown preflight skills warn and fall back to 'default'."""
+
+    def setUp(self):
+        reset_skill_registry()
+
+    def tearDown(self):
+        reset_skill_registry()
+
+    def test_valid_skill_warns_and_falls_back_for_unknown(self):
+        stderr = io.StringIO()
+        old = sys.stderr
+        sys.stderr = stderr
+        try:
+            result = _valid_skill("does-not-exist")
+        finally:
+            sys.stderr = old
+        self.assertEqual(result, "default")
+        self.assertIn("WARN", stderr.getvalue())
+        self.assertIn("does-not-exist", stderr.getvalue())
+
+    def test_valid_skill_keeps_known_skill(self):
+        stderr = io.StringIO()
+        old = sys.stderr
+        sys.stderr = stderr
+        try:
+            result = _valid_skill("research")
+        finally:
+            sys.stderr = old
+        self.assertEqual(result, "research")
+        self.assertEqual(stderr.getvalue(), "")
+
+
+class TestSkillRunnerWiring(unittest.TestCase):
+    """Verify run_swarm honors the skill flag and config skill field."""
+
+    def setUp(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    @patch("swarm.runner.orchestrate")
+    def test_skill_flag_passed_through_to_orchestrate(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        run_swarm(goal="g", skill="reverse-engineering", mix=True)
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["skill"], "reverse-engineering")
+        self.assertEqual(kwargs["mix"], True)
+
+    @patch("swarm.runner.orchestrate")
+    def test_skill_with_team_auto_enables_mix(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        stderr = io.StringIO()
+        old = sys.stderr
+        sys.stderr = stderr
+        try:
+            run_swarm(goal="g", skill="research")
+        finally:
+            sys.stderr = old
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["skill"], "research")
+        self.assertEqual(kwargs["mix"], True)
+        self.assertIn("ships a team", stderr.getvalue())
+
+    @patch("swarm.runner.orchestrate")
+    def test_config_skill_field_honored(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        cfg = {
+            "skill": "research",
+            "team": [
+                {"name": "Alpha", "model": "deepseek-v4-flash:cloud",
+                 "angle": "a", "prompt": "You are Alpha. MAIN QUESTION: {goal} YOUR ANGLE: {angle}"}
+            ],
+            "angles": ["a"],
+            "fallback_models": ["deepseek-v4-flash:cloud"],
+        }
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(cfg, f)
+            path = f.name
+        try:
+            run_swarm(goal="g", config_path=path)
+        finally:
+            os.unlink(path)
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["skill"], "research")
+
+    @patch("swarm.runner.orchestrate")
+    def test_config_unknown_skill_field_ignored(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        cfg = {"skill": "nope", "team": [], "angles": [], "fallback_models": []}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(cfg, f)
+            path = f.name
+        try:
+            run_swarm(goal="g", config_path=path)
+        finally:
+            os.unlink(path)
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertIsNone(kwargs["skill"])
 
 
 if __name__ == "__main__":
