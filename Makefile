@@ -1,4 +1,4 @@
-.PHONY: help test test-unit test-pytest test-tools test-tool-unit test-skills test-summary test-e2e test-ci act clean
+.PHONY: help test test-unit test-pytest test-tools test-tool-unit test-skills test-summary test-e2e test-ci act release clean
 
 PYTHON ?= python3
 PYTEST ?= $(PYTHON) -m pytest
@@ -23,6 +23,7 @@ help:
 	@echo "  make test-ci     - mirror GitHub Actions CI exactly"
 	@echo "  make test-e2e    - Ollama-dependent end-to-end tests (needs Ollama)"
 	@echo "  make act         - run GitHub Actions locally via act (3.11 + 3.12)"
+	@echo "  make release     - bump version + tag + push (KIND=patch|minor|major)"
 	@echo "  make clean       - pycache, stray swarm_*.md, test-results/"
 	@echo ""
 	@echo "  Verbosity: append V=1 (grouped summary) or V=2 (raw trace). Default is quiet."
@@ -62,6 +63,21 @@ test-e2e:
 act:
 	act -j test --matrix python-version:"3.11"
 	act -j test --matrix python-version:"3.12"
+
+# Cut a release: bump version, commit, tag, push. CI then generates the
+# CHANGELOG and publishes the GitHub Release.
+#   make release KIND=patch   # 2.0.0 -> 2.0.1
+#   make release KIND=minor   # 2.0.0 -> 2.1.0
+#   make release KIND=major   # 2.0.0 -> 3.0.0
+release:
+	@test -n "$(KIND)" || (echo "Usage: make release KIND=patch|minor|major" && false)
+	@NEW_VERSION=$$($(PYTHON) -c "import tomllib; v=tomllib.load(open('pyproject.toml','rb'))['project']['version']; a,b,c=map(int,v.split('.')); print(f'{a+1}.0.0' if '$(KIND)'=='major' else f'{a}.{b+1}.0' if '$(KIND)'=='minor' else f'{a}.{b}.{c+1}')"); \
+	echo "  Bumping to v$$NEW_VERSION ($(KIND))"; \
+	sed -i.bak "s/^version = \".*\"/version = \"$$NEW_VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak; \
+	git add pyproject.toml && git commit -m "release: v$$NEW_VERSION"; \
+	git tag v$$NEW_VERSION; \
+	git push origin main && git push origin v$$NEW_VERSION; \
+	echo "  Released v$$NEW_VERSION — CI will update CHANGELOG.md and publish the GitHub Release."
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

@@ -224,6 +224,16 @@ The test suite under `tests/` covers:
 - Hermetic per-tool tests (`tests.test_tools` — every tool in isolation, mocked network/Ollama)
 - Adversarial cases derived from `chaos_monkey.sh` (empty goal, unicode, missing config, etc.)
 
+## Releases
+
+Releases are cut with git tags (`v*`). `make release KIND=patch|minor|major`
+bumps `pyproject.toml`, commits, tags, and pushes. CI (`.github/workflows/release.yml`)
+then generates `CHANGELOG.md` from the git log and publishes a GitHub Release.
+
+- `CHANGELOG.md` is **auto-generated** — do not hand-edit it
+- The tag version must match `pyproject.toml` (enforced by the workflow)
+- Full guide: `docs/RELEASE.md`
+
 ## Auto-Testing on Commit
 
 A **post-commit git hook** runs chaos monkey + benchmark automatically after every commit:

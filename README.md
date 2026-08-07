@@ -111,6 +111,20 @@ python3 -m swarm --tui
 python3 -m demo-swarm --goal "Your question" --mix
 ```
 
+## Releases
+
+Releases are cut with git tags (`v*`). Bump the version, commit, tag, and push in one command:
+
+```bash
+make release KIND=patch   # 2.0.0 -> 2.0.1 (bug fixes)
+make release KIND=minor   # 2.0.0 -> 2.1.0 (new features)
+make release KIND=major   # 2.0.0 -> 3.0.0 (breaking changes)
+```
+
+Pushing a `v*` tag triggers a GitHub Actions workflow that generates `CHANGELOG.md`
+from the git log, commits it back to `main`, and publishes a GitHub Release.
+Full guide: `docs/RELEASE.md`.
+
 ## Complexity estimation (`--auto`)
 
 When `--auto` is set, the orchestrator model (DeepSeek V4 Flash) reads the query and rates its complexity 1-5 before spawning workers:
@@ -507,7 +521,11 @@ Run with `python3 -m swarm --tui`:
 │   └── swarm.py             # Minimal version (no web search)
 ├── docs/                    # Documentation
 │   ├── TESTING.md           # Testing workflow (make targets + verbosity flag)
-│   └── BENCHMARK.md         # Benchmark results
+│   ├── BENCHMARK.md         # Benchmark results
+│   └── RELEASE.md           # Release process (tags, versions, CHANGELOG)
+├── scripts/                 # Helper scripts
+│   └── gen_changelog.py     # Auto-generates CHANGELOG.md from git log
+├── CHANGELOG.md             # Auto-generated release changelog (do not hand-edit)
 ├── swarm_config.json        # Configurable team, models, prompts
 ├── gaia_eval.py             # GAIA benchmark eval harness
 ├── SCRATCHPAD.md            # Scratchpad architecture docs
