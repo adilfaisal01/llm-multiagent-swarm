@@ -18,6 +18,18 @@ from swarm.skills._base import parse_frontmatter
 from swarm.tools import get_registry, reset_registry
 
 
+def capture_stderr(fn, *args, **kwargs):
+    """Run fn capturing stderr; return (result, stderr_text)."""
+    buf = io.StringIO()
+    old = sys.stderr
+    sys.stderr = buf
+    try:
+        result = fn(*args, **kwargs)
+    finally:
+        sys.stderr = old
+    return result, buf.getvalue()
+
+
 class TestFrontmatterParser(unittest.TestCase):
     """Verify the hand-rolled YAML subset parser."""
 
@@ -127,14 +139,14 @@ class TestSkillRegistry(unittest.TestCase):
     def test_load_team_research(self):
         sr = get_skill_registry()
         team = sr.load_team("research")
-        self.assertIsNotNone(team)
+        assert team is not None
         names = [m["name"] for m in team["team"]]
         self.assertEqual(names, ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 
     def test_load_team_reverse_engineering(self):
         sr = get_skill_registry()
         team = sr.load_team("reverse-engineering")
-        self.assertIsNotNone(team)
+        assert team is not None
         names = [m["name"] for m in team["team"]]
         self.assertEqual(names, ["Vera", "Cyrus", "Ash", "Zara", "Romy"])
 
@@ -317,7 +329,7 @@ class TestSkillRunnerWiring(unittest.TestCase):
     @patch("swarm.runner.orchestrate")
     def test_skill_flag_passed_through_to_orchestrate(self, mock_orchestrate):
         mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
-        run_swarm(goal="g", skill="reverse-engineering", mix=True)
+        capture_stderr(run_swarm, goal="g", skill="reverse-engineering", mix=True)
         kwargs = mock_orchestrate.call_args.kwargs
         self.assertEqual(kwargs["skill"], "reverse-engineering")
         self.assertEqual(kwargs["mix"], True)
@@ -367,11 +379,127 @@ class TestSkillRunnerWiring(unittest.TestCase):
             json.dump(cfg, f)
             path = f.name
         try:
-            run_swarm(goal="g", config_path=path)
+            capture_stderr(run_swarm, goal="g", config_path=path)
         finally:
             os.unlink(path)
         kwargs = mock_orchestrate.call_args.kwargs
         self.assertIsNone(kwargs["skill"])
+
+    @patch("swarm.runner.orchestrate")
+    def test_skill_team_size_defaults_worker_count(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        stderr = io.StringIO()
+        old = sys.stderr
+        sys.stderr = stderr
+        try:
+            run_swarm(goal="g", skill="research")
+        finally:
+            sys.stderr = old
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["num_workers"], 5)
+        self.assertIn("ships 5 workers", stderr.getvalue())
+
+    @patch("swarm.runner.orchestrate")
+    def test_skill_team_size_does_not_override_explicit_workers(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        capture_stderr(run_swarm, goal="g", skill="research", workers=3)
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["num_workers"], 3)
+
+    @patch("swarm.runner.orchestrate")
+    def test_skill_without_team_defaults_to_three(self, mock_orchestrate):
+        mock_orchestrate.return_value = {"workers": [], "goal": "g", "num_workers": 3}
+        capture_stderr(run_swarm, goal="g", skill="vision")
+        kwargs = mock_orchestrate.call_args.kwargs
+        self.assertEqual(kwargs["num_workers"], 3)
+
+
+class TestParallelRunnerQueue(unittest.TestCase):
+    """Verify _run_workers_parallel caps concurrency at 5 and queues overflow."""
+
+    def setUp(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def _make_workers(self, n):
+        return [
+            {
+                "name": f"Worker {i + 1}",
+                "model": "deepseek-v4-flash:cloud",
+                "angle": "a",
+                "prompt": "p",
+                "tool_bundle": "default",
+            }
+            for i in range(n)
+        ]
+
+    @patch("swarm.orchestrator.run_worker")
+    def test_six_workers_all_complete_with_five_concurrent(self, mock_run_worker):
+        from swarm.orchestrator import _run_workers_parallel
+
+        import threading
+        import time
+
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def fake_worker(task_id, *args, **kwargs):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            with lock:
+                active -= 1
+            return {
+                "worker_id": task_id,
+                "name": kwargs.get("worker_name", f"Worker {task_id}"),
+                "model": "deepseek-v4-flash:cloud",
+                "duration_s": 0.1,
+                "search_rounds": 0,
+                "response": "ok",
+                "status": "ok",
+                "tool_bundle": "default",
+            }
+
+        mock_run_worker.side_effect = fake_worker
+        results = _run_workers_parallel(
+            self._make_workers(6), "g", "http://localhost:11434", [], io.StringIO()
+        )
+        self.assertEqual(len(results), 6)
+        self.assertLessEqual(max_active, 5)
+        self.assertEqual(sorted(r["worker_id"] for r in results), [1, 2, 3, 4, 5, 6])
+
+    @patch("swarm.orchestrator.run_worker")
+    def test_errors_surfaced_in_results(self, mock_run_worker):
+        from swarm.orchestrator import _run_workers_parallel
+
+        def fake_worker(task_id, *args, **kwargs):
+            status = "ok" if task_id != 2 else "error"
+            return {
+                "worker_id": task_id,
+                "name": f"Worker {task_id}",
+                "model": "deepseek-v4-flash:cloud",
+                "duration_s": 0.1,
+                "search_rounds": 0,
+                "response": "ok" if status == "ok" else "[ERROR: boom]",
+                "status": status,
+                "tool_bundle": "default",
+            }
+
+        mock_run_worker.side_effect = fake_worker
+        results = _run_workers_parallel(
+            self._make_workers(3), "g", "http://localhost:11434", [], io.StringIO()
+        )
+        self.assertEqual(len(results), 3)
+        errored = [r for r in results if r["status"] != "ok"]
+        self.assertEqual(len(errored), 1)
+        self.assertEqual(errored[0]["worker_id"], 2)
 
 
 if __name__ == "__main__":
