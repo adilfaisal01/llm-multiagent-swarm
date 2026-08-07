@@ -61,6 +61,7 @@ def run_swarm(
     defaults = cfg.get_defaults(loaded_config)
 
     # If a skill is named, load its team.json (if it ships one) as the config
+    skill_team = None
     if skill:
         from .skills import get_skill_registry
         skill_team = get_skill_registry().load_team(skill)
@@ -75,10 +76,11 @@ def run_swarm(
     elif loaded_config and loaded_config.get("skill"):
         # --config JSON may declare a skill: use its prompt body + tools with the JSON's team
         from .skills import get_skill_registry
-        skill = loaded_config["skill"]
-        if get_skill_registry().get(skill) is None:
-            print(f"  [WARN] Config references unknown skill '{skill}', ignoring", file=sys.stderr)
-            skill = None
+        cfg_skill = loaded_config.get("skill")
+        if cfg_skill and get_skill_registry().get(cfg_skill) is None:
+            print(f"  [WARN] Config references unknown skill '{cfg_skill}', ignoring", file=sys.stderr)
+            cfg_skill = None
+        skill = cfg_skill
 
     # Pull goal and angle from config if not set
     if not goal:
@@ -97,6 +99,12 @@ def run_swarm(
         est_model = defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud")
         num_workers = estimate_complexity(goal, model=est_model, ollama_base=ollama_base)
         print(f"  [AUTO] Estimated complexity: {num_workers}/5 workers (model: {est_model.split(':')[0]})", file=sys.stderr)
+    elif skill_team:
+        # Skill ships a team — default to the full team size (concurrency is
+        # capped at 5 in the orchestrator; extra workers queue up).
+        num_workers = len(skill_team["team"])
+        print(f"  [INFO] Skill '{skill}' ships {num_workers} workers — using full team "
+              f"(max 5 run concurrently, rest queue)", file=sys.stderr)
     else:
         num_workers = 3
 

@@ -171,6 +171,7 @@ python3 test_tools.py              # Tool smoke test (11/12 pass)
 bash chaos_monkey.sh               # 15 chaos monkey tests
 python3 -m unittest discover tests/ # Hermetic unit + functional tests
 pytest tests/                       # Same tests via pytest
+python3 tests/summary_runner.py     # Organized grouped summary (make test-summary)
 ```
 
 ## CI
@@ -264,7 +265,7 @@ The mode changes:
 - **TUI output**: Markdown auto-saved to `swarm_outputs/` on every run; live sources shown in side panel
 - **JSON output**: Goes to stdout (not stderr) so piping works: `python3 -m swarm --goal "..." --json | python3 -c "import json,sys; ..."`
 - **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`)
-- **Worker count**: Clamped to 1-5. `--workers 20` caps at 5 with wrap-around
+- **Worker count**: Explicit `--workers N` is clamped to 1-5. When a skill ships a `team.json`, the runner defaults to the full team size (no clamp) — concurrency is capped at 5 in the orchestrator and extra workers queue until a slot frees up
 - **Ollama URL**: Defaults to `http://localhost:11434`. Set `OLLAMA_HOST` env var to override
 - **Vision**: Only Gemma4:31b-cloud works for images. Kimi K2.5 returns empty.
 - **xlsx merged cells**: The simple XML parser in `file_reader.py` can't handle merged cells

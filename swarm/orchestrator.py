@@ -53,9 +53,17 @@ def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) ->
 
 
 def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress=None):
-    """Run all workers in parallel via ThreadPoolExecutor."""
+    """Run workers in parallel, capping concurrency at 5.
+
+    Teams larger than 5 are queued: extra workers wait until a slot frees
+    up (ThreadPoolExecutor handles the queue internally).
+    """
     results = []
-    with ThreadPoolExecutor(max_workers=len(workers)) as ex:
+    max_concurrent = min(len(workers), 5)
+    if len(workers) > max_concurrent:
+        print(f"  [INFO] {len(workers)} workers — capping concurrency at 5, "
+              f"{len(workers) - max_concurrent} queued", file=out)
+    with ThreadPoolExecutor(max_workers=max_concurrent) as ex:
         futures = {
             ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
                       w["angle"], w.get("prompt", ""),
@@ -123,12 +131,12 @@ def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_model
     return results
 
 
-def orchestrate(goal: str, num_workers: int = 5, model: str = None,
+def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
                 mix: bool = False, json_mode: bool = False,
                 top_angle: str = "",
-                team: list = None, angles: list = None,
-                default_worker: str = None,
-                fallback_models: list = None,
+                team: list | None = None, angles: list | None = None,
+                default_worker: str | None = None,
+                fallback_models: list | None = None,
                 ollama_base: str = "http://localhost:11434",
                 synthesize: bool = True,
                 synthesis_model: str | None = None,
@@ -234,6 +242,13 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
         results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress_callback)
     else:
         results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress_callback)
+
+    # Surface worker errors to the end user
+    errored = [r for r in results if r.get("status") != "ok"]
+    if errored:
+        names = ", ".join(f"{r['name']} ({r['model'].split(':')[0]})" for r in errored)
+        print(f"  ⚠️  {len(errored)}/{len(results)} workers errored: {names}", file=out)
+        print(f"     Synthesis will use only the {len(results) - len(errored)} successful worker outputs.", file=out)
 
     # Collect scratchpad summary
     scratch_summary = sp.get_summary()
