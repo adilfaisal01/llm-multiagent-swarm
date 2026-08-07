@@ -39,7 +39,29 @@ def search_searxng(query: str) -> str:
 
 
 def search_ddg(query: str) -> str:
-    """Search via DuckDuckGo HTML endpoint (no API key needed)."""
+    """Search via DuckDuckGo using the `ddgs` library (handles anti-bot).
+
+    Falls back to the HTML endpoint scrape if the library isn't installed.
+    """
+    # Preferred: the ddgs library, which handles DDG's bot detection.
+    try:
+        from ddgs import DDGS
+        with DDGS() as d:
+            results = list(d.text(query, max_results=5))
+        if not results:
+            return "No search results found."
+        output = []
+        for r in results[:5]:
+            title = r.get("title", "")
+            snippet = r.get("body", "")
+            link = r.get("href", "")
+            output.append(f"- {title}: {snippet[:200]}\n  {link}")
+        return "\n".join(output)
+    except ImportError:
+        pass  # fall through to HTML scrape
+    except Exception as e:
+        return f"[Search error: {e}]"
+    # Fallback: scrape the HTML endpoint (older, more fragile).
     try:
         url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
         req = urllib.request.Request(url, headers={

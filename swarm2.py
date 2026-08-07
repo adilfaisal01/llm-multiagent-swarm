@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 OLLAMA_RAW = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_BASE = f"http://{OLLAMA_RAW}" if not OLLAMA_RAW.startswith("http") else OLLAMA_RAW
-SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "searxng")
+SEARCH_BACKEND = os.environ.get("SEARCH_BACKEND", "ddgs")
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://localhost:8080")
 SEARCH_API_KEY = os.environ.get("SEARCH_API_KEY", "")
 SEARCH_TIMEOUT = int(os.environ.get("SEARCH_TIMEOUT", "15"))
@@ -282,7 +282,29 @@ def search_searxng(query: str) -> str:
 
 
 def search_ddg(query: str) -> str:
-    """Search via DuckDuckGo HTML endpoint (no API key needed)."""
+    """Search via DuckDuckGo using the `ddgs` library (handles anti-bot).
+
+    Falls back to the HTML endpoint scrape if the library isn't installed.
+    """
+    # Preferred: the ddgs library, which handles DDG's bot detection.
+    try:
+        from ddgs import DDGS
+        with DDGS() as d:
+            results = list(d.text(query, max_results=5))
+        if not results:
+            return "No search results found."
+        output = []
+        for r in results[:5]:
+            title = r.get("title", "")
+            snippet = r.get("body", "")
+            link = r.get("href", "")
+            output.append(f"- {title}: {snippet[:200]}\n  {link}")
+        return "\n".join(output)
+    except ImportError:
+        pass  # fall through to HTML scrape
+    except Exception as e:
+        return f"[Search error: {e}]"
+    # Fallback: scrape the HTML endpoint (older, more fragile).
     try:
         url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
         req = urllib.request.Request(url, headers={
