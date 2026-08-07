@@ -50,16 +50,27 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
 
 
+def _tag_exists(tag: str) -> bool:
+    """Return True if the given tag already exists in the repo."""
+    try:
+        _git("rev-parse", "-q", "--verify", f"refs/tags/{tag}")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def _previous_tag(current: str) -> str | None:
     """Return the tag before `current`, or None if there is no prior tag.
 
-    Falls back to the latest existing tag when `current` is not yet
-    resolvable (e.g. a dry-run before the tag is created).
+    When `current` already exists (a real release), find the tag on its
+    parent commit. When it does not (a dry-run before tagging), fall back
+    to the latest existing tag as the range start.
     """
-    try:
-        return _git("describe", "--tags", "--abbrev=0", f"{current}^")
-    except subprocess.CalledProcessError:
-        pass
+    if _tag_exists(current):
+        try:
+            return _git("describe", "--tags", "--abbrev=0", f"{current}^")
+        except subprocess.CalledProcessError:
+            return None
     try:
         return _git("describe", "--tags", "--abbrev=0", "HEAD")
     except subprocess.CalledProcessError:
