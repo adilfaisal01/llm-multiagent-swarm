@@ -3,28 +3,31 @@
 Instead of hardcoded angles like "Cover ORIGINS and HISTORY," the
 preflight pass uses the orchestrator model to:
 1. Figure out what kind of answer is needed (number, name, phrase, etc.)
-2. Assign the right tool bundles to each worker
+2. Assign the right skills to each worker
 3. Generate specific search strategies for each worker
 4. Give workers a clear, actionable plan for finding the exact answer
 """
 
 import json
 import re
+import sys
 import urllib.request
 
 from .prompts import load_prompt, render_prompt
+from .skills import get_skill_registry
 
 
-# Available tool bundles and what they do — the LLM uses this to assign them
-BUNDLE_INFO = {
-    "vision": "Has read_image tool — use for questions with image attachments (.png/.jpg). Best model: gemma4:31b-cloud (multimodal).",
-    "code": "Has python_exec tool — use for calculations, data processing, running code. Best model: deepseek-v4-flash.",
-    "files": "Has read_file tool — use for .docx, .xlsx, .csv, .txt, .json, .xml attachments. Best model: gpt-oss:120b-cloud.",
-    "search": "Web search only — use for simple fact lookups. Fast model: nemotron-3-nano:30b-cloud.",
-    "default": "Web search + scratchpad + web_extract — use for general research. Best model: gpt-oss:120b-cloud.",
-}
+def _skill_descriptions() -> str:
+    """Descriptions of all discovered skills for the preflight LLM."""
+    return get_skill_registry().descriptions_for_llm()
 
-BUNDLE_NAMES = sorted(BUNDLE_INFO.keys())
+
+def _valid_skill(name: str) -> str:
+    """Return a valid skill name, warning and falling back to 'default'."""
+    if get_skill_registry().get(name) is not None:
+        return name
+    print(f"  [WARN] Unknown skill '{name}', falling back to 'default'", file=sys.stderr)
+    return "default"
 
 
 def analyze_question(goal: str, model: str,
@@ -43,10 +46,7 @@ def analyze_question(goal: str, model: str,
             - search_plan: specific search strategy
             - verification_hint: how to verify the answer
     """
-    bundle_descriptions = "\n".join(
-        f"  - \"{name}\": {desc}"
-        for name, desc in sorted(BUNDLE_INFO.items())
-    )
+    bundle_descriptions = _skill_descriptions()
 
     prompt = render_prompt(
         "preflight",
@@ -90,7 +90,7 @@ def analyze_question(goal: str, model: str,
     # Try to extract JSON from the response
     try:
         parsed = _extract_json(content)
-        # Support both old format (strategies + bundles) and new format (workers array)
+        # Support both old format (strategies + skills) and new format (workers array)
         if parsed:
             if "workers" in parsed:
                 # New format: workers array with bundle, depends_on, search_plan
@@ -100,8 +100,8 @@ def analyze_question(goal: str, model: str,
                                     "search_plan": "Search for the answer directly.",
                                     "verification_hint": "Verify with a second source."})
 
-                bundles = [w.get("bundle", "default") for w in workers]
-                valid_bundles = [b if b in BUNDLE_INFO else "default" for b in bundles]
+                skills = [w.get("bundle", "default") for w in workers]
+                valid_skills = [_valid_skill(b) for b in skills]
                 depends_on = [w.get("depends_on") for w in workers]
 
                 strategies = []
@@ -116,13 +116,13 @@ def analyze_question(goal: str, model: str,
                     "answer_type": parsed.get("answer_type", "other"),
                     "research_mode": parsed.get("research_mode", "objective"),
                     "mode": parsed.get("mode", "parallel"),
-                    "bundles": valid_bundles,
+                    "skills": valid_skills,
                     "depends_on": depends_on,
                     "strategies": strategies,
                 }
 
             elif "strategies" in parsed:
-                # Old format: strategies array + bundles array (backward compat)
+                # Old format: strategies array + skills array (backward compat)
                 strategies = parsed["strategies"][:num_workers]
                 while len(strategies) < num_workers:
                     strategies.append({
@@ -131,16 +131,16 @@ def analyze_question(goal: str, model: str,
                         "verification_hint": "Verify with a second source."
                     })
 
-                bundles = parsed.get("bundles", [])
-                valid_bundles = [b if b in BUNDLE_INFO else "default" for b in bundles[:num_workers]]
-                while len(valid_bundles) < num_workers:
-                    valid_bundles.append("default")
+                skills = parsed.get("skills", parsed.get("bundles", []))
+                valid_skills = [_valid_skill(b) for b in skills[:num_workers]]
+                while len(valid_skills) < num_workers:
+                    valid_skills.append("default")
 
                 return {
                     "answer_type": parsed.get("answer_type", "other"),
                     "research_mode": parsed.get("research_mode", "objective"),
                     "mode": "parallel",
-                    "bundles": valid_bundles,
+                    "skills": valid_skills,
                     "depends_on": [None] * num_workers,
                     "strategies": strategies,
                 }
@@ -152,7 +152,7 @@ def analyze_question(goal: str, model: str,
         "answer_type": "other",
         "research_mode": "objective",
         "mode": "parallel",
-        "bundles": ["default"] * num_workers,
+        "skills": ["default"] * num_workers,
         "depends_on": [None] * num_workers,
         "strategies": [
             {"worker_name": f"Worker {i+1}", "search_plan": "Search for the answer directly.", "verification_hint": "Verify with a second source."}
@@ -198,11 +198,12 @@ def build_worker_prompt(goal: str, strategy: dict, answer_type: str,
     hint = answer_type_hints.get(answer_type, "The answer is a specific fact. Get the exact wording.")
 
     mode_rules = render_prompt(f"mode_{research_mode}")
-    bundle_template = f"bundle_{tool_bundle}"
-    if load_prompt(bundle_template):
-        bundle_rules = render_prompt(bundle_template)
+    skill = get_skill_registry().get(tool_bundle)
+    if skill is not None and skill.prompt:
+        bundle_rules = skill.prompt
     else:
-        bundle_rules = render_prompt("bundle_default")
+        default_skill = get_skill_registry().get("default")
+        bundle_rules = default_skill.prompt if default_skill else ""
 
     return render_prompt(
         "worker",

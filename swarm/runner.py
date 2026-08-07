@@ -24,6 +24,7 @@ def run_swarm(
     model: str | None = None,
     angle: str | None = None,
     config_path: str | None = None,
+    skill: str | None = None,
     json_mode: bool = False,
     ollama_host: str | None = None,
     synthesize: bool = True,
@@ -42,6 +43,7 @@ def run_swarm(
         model: Model for uniform mode (ignored if mix=True).
         angle: Optional top-level angle prepended to all workers.
         config_path: Path to JSON config file. Defaults to SWARM_CONFIG env or swarm_config.json.
+        skill: Named skill from swarm/skills/. Loads its team.json if present.
         json_mode: Return JSON-serializable output.
         ollama_host: Ollama base URL. Defaults to OLLAMA_HOST env or http://localhost:11434.
         progress_callback: Optional callable(event, payload) for live UI updates.
@@ -57,6 +59,26 @@ def run_swarm(
     config_path = config_path or cfg.CONFIG_PATH
     loaded_config = cfg.load_swarm_config(config_path)
     defaults = cfg.get_defaults(loaded_config)
+
+    # If a skill is named, load its team.json (if it ships one) as the config
+    if skill:
+        from .skills import get_skill_registry
+        skill_team = get_skill_registry().load_team(skill)
+        if skill_team:
+            loaded_config = skill_team
+            defaults = cfg.get_defaults(loaded_config)
+            if not mix:
+                mix = True
+                print(f"  [INFO] Skill '{skill}' ships a team — enabling --mix to use it", file=sys.stderr)
+        else:
+            print(f"  [INFO] Skill '{skill}' has no team.json — using preflight-generated team", file=sys.stderr)
+    elif loaded_config and loaded_config.get("skill"):
+        # --config JSON may declare a skill: use its prompt body + tools with the JSON's team
+        from .skills import get_skill_registry
+        skill = loaded_config["skill"]
+        if get_skill_registry().get(skill) is None:
+            print(f"  [WARN] Config references unknown skill '{skill}', ignoring", file=sys.stderr)
+            skill = None
 
     # Pull goal and angle from config if not set
     if not goal:
@@ -98,6 +120,7 @@ def run_swarm(
         ollama_base=ollama_base,
         synthesize=synthesize,
         synthesis_model=defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud"),
+        skill=skill,
         progress_callback=progress_callback,
     )
 

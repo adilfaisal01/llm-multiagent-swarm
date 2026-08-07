@@ -21,11 +21,6 @@ class TestPrompts(unittest.TestCase):
             "synthesis_subjective",
             "mode_objective",
             "mode_subjective",
-            "bundle_default",
-            "bundle_vision",
-            "bundle_code",
-            "bundle_files",
-            "bundle_search",
             "fallback_system",
             "fallback_user",
         ]
@@ -67,12 +62,7 @@ class TestPrompts(unittest.TestCase):
                 )
                 self.assertIn(mode.upper(), prompt)
                 self.assertIn("ws", prompt)
-
-    def test_bundle_templates_render(self):
-        for bundle in ("default", "vision", "code", "files", "search"):
-            with self.subTest(bundle=bundle):
-                text = render_prompt(f"bundle_{bundle}")
-                self.assertTrue(text)
+                self.assertIn("fs", prompt)
 
 
 if __name__ == "__main__":

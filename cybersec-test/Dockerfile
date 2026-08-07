@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir "textual>=0.70.0"
 
 # Copy the swarm module
 COPY swarm/ ./swarm/
-COPY configs/ ./configs/
 COPY samples/ ./samples/
 
 # Install the package itself

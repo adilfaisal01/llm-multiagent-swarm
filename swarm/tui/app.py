@@ -233,10 +233,10 @@ class SwarmTUI(App):
         elif event == "preflight_done":
             mode = payload.get("mode", "parallel")
             research_mode = payload.get("research_mode", "objective")
-            bundles = payload.get("bundles", [])
+            skills = payload.get("skills", payload.get("bundles", []))
             emoji = "🎭" if research_mode == "subjective" else "🔬"
             chat.add_system(
-                f"Preflight done — mode: {mode}, research: {research_mode} {emoji}, bundles: {', '.join(bundles)}"
+                f"Preflight done — mode: {mode}, research: {research_mode} {emoji}, skills: {', '.join(skills)}"
             )
         elif event == "worker_start":
             grid.update_worker(

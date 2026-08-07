@@ -16,7 +16,7 @@ swarm/
 ├── __main__.py       # CLI entry point (thin wrapper, ~60 lines)
 ├── runner.py         # Library entry point: run_swarm()
 ├── orchestrator.py   # Spawns workers, manages scratchpad, pipeline mode
-├── preflight.py      # LLM-based question analysis + bundle assignment
+├── preflight.py      # LLM-based question analysis + skill assignment
 ├── worker.py         # Worker agent loop (Ollama chat + tool calls)
 ├── scratchpad.py     # Write-only RAM SQLite for raw findings
 ├── search.py         # Search backends: SearXNG, DuckDuckGo, Google
@@ -24,13 +24,23 @@ swarm/
 ├── config.py         # Config loader from JSON file
 ├── complexity.py     # Model-based complexity estimation (1-5)
 ├── output.py         # Output formatting + markdown file saving
+├── skills/           # Skill system (capability packs)
+│   ├── __init__.py   # SkillRegistry, get_skill_registry()
+│   ├── _base.py      # Skill dataclass + registry + hand-rolled YAML parser
+│   ├── default/SKILL.md
+│   ├── research/     # Full pack: SKILL.md + team.json
+│   ├── search/SKILL.md
+│   ├── vision/SKILL.md
+│   ├── code/SKILL.md
+│   ├── files/SKILL.md
+│   └── reverse-engineering/  # Full pack: SKILL.md + team.json
+├── integrations/     # External harness adapters (Hermes plugin, future)
 ├── prompts/          # External markdown prompt templates
 │   ├── __init__.py   # load_prompt() and render_prompt()
 │   ├── preflight.md  # Preflight JSON-generation prompt
 │   ├── worker.md     # Worker system prompt template
 │   ├── synthesis.md  # Synthesis prompt template
 │   ├── mode_*.md     # Objective / subjective mode instructions
-│   ├── bundle_*.md   # Per-bundle tool-forcing rules
 │   └── fallback_*.md # Fallback model prompts
 ├── tui/              # Optional persistent Textual TUI
 │   ├── __init__.py   # Exports run_tui, Session, SessionStore
@@ -41,7 +51,7 @@ swarm/
 └── tools/            # Modular tool registry
     ├── __init__.py   # Registry: get_registry(), reset_registry()
     ├── base.py       # BaseTool abstract class
-    ├── registry.py   # ToolRegistry: discover, register, bundle
+    ├── registry.py   # ToolRegistry: discover, register, skill delegation
     ├── web_search.py # Search the web
     ├── web_extract.py# Read content from URLs
     ├── scratchpad.py # Log findings tool
@@ -67,20 +77,30 @@ save_markdown(result, result["goal"])
 Before spawning workers, the orchestrator calls DeepSeek V4 Flash to analyze the question:
 
 1. **Classifies answer type**: number, name, phrase, date, or other
-2. **Assigns tool bundles**: The LLM reasons about what tools each worker needs (vision for images, code for calculations, files for spreadsheets, etc.)
+2. **Assigns skills**: The LLM reasons about what tools each worker needs (vision for images, code for calculations, files for spreadsheets, etc.) and picks from the discovered skill list
 3. **Decides execution mode**: `parallel` or `pipeline` based on dependencies
 4. **Generates strategies**: Each worker gets a specific search/action plan
 
 The LLM decides, not hardcoded rules. No preload hack — workers use their tools.
 
-### Tool bundles (modular)
-Each tool is a self-contained module extending `BaseTool`. Bundles are **additive** — specialty bundles include search + scratchpad + unique tools:
+### Skills (capability packs, modular)
+A **skill** is a folder under `swarm/skills/<name>/` with a `SKILL.md` file. The YAML `---` frontmatter declares metadata (`name`, `description`, `triggers`, `tools`, `recommended_model`, optional `team`/`mode`) plus Hermes-style fields (`version`, `tags`, `trigger`, `related_skills`, `platforms`). The markdown body is the worker's behavior rules.
 
-- `default` — web_search, web_extract, scratchpad_add
+Skills reference tools **by name** — all tool implementations live in `swarm/tools/` and are resolved against the `ToolRegistry`. Built-in skills:
+
+- `default` — web_search, web_extract, scratchpad_add (fallback)
+- `research` — web_search, web_extract, scratchpad_add (ships a 5-worker team.json)
+- `search` — web_search only (no scratchpad)
 - `vision` — +read_image (for image files)
 - `code` — +python_exec (for calculations)
 - `files` — +read_file, read_image (for data files)
-- `search` — web_search only (no scratchpad)
+- `reverse-engineering` — python_exec, web_search, web_extract, read_file, read_image, scratchpad_add (ships a 5-worker team.json)
+
+**Full-pack skills** (`research`, `reverse-engineering`) ship a `team.json` with named workers/models/angles. Use with `--skill <name>`. A `--config` JSON may also declare a `"skill"` field to use a skill's prompt body + tools with a custom team. `--skill` and `--config` are mutually exclusive.
+
+**Adding a skill:** create `swarm/skills/<name>/SKILL.md` with frontmatter + body. Auto-discovered, no code changes. Copy a full-pack skill to `swarm/skills/research-<topic>/` and edit `name` + `team.json` for a domain-specific pack.
+
+**Hermes compatibility:** every `SKILL.md` uses Hermes-native YAML `---` frontmatter and a `## Running under Hermes` section, so Hermes users can read skills natively, copy them into `~/.hermes/skills/`, or adapt the workflow to `delegate_task`. Do NOT add tools to skill folders — all tools live in `swarm/tools/`.
 
 ### Pipeline mode
 For questions with sequential dependencies, preflight sets `mode: pipeline`:
@@ -203,7 +223,9 @@ This symlinks `.githooks/post-commit` into `.git/hooks/`. Run once after cloning
 ### Don't
 - Don't reference the old monolithic `tools.py` (it's dead, long live the modular registry)
 - Don't describe the preload hack (it's removed — workers use tools now)
-- Don't suggest hardcoded bundle assignments (the LLM decides)
+- Don't suggest hardcoded bundle/skill assignments (the LLM decides)
+- Don't reference `bundle_*.md` (removed — skills own their prompts now)
+- Don't add tools to skill folders — all tools live in `swarm/tools/`
 
 ### Persistent TUI (`--tui`)
 A Textual-based terminal UI is available as an optional mode:
@@ -211,7 +233,7 @@ A Textual-based terminal UI is available as an optional mode:
 - Run with `python3 -m swarm --tui`
 - Persistent session sidebar: previous research sessions are loaded from `swarm_sessions.db`
 - Follow-up questions inject the previous run's synthesis + top scratchpad findings as context
-- Live worker grid shows each worker's status, model, bundle, elapsed time, and a hybrid progress bar
+- Live worker grid shows each worker's status, model, skill, elapsed time, and a hybrid progress bar
 - Live sources panel shows worker name + tool + query/URL as research happens
 - Preflight auto-detects `objective` vs `subjective` research mode; synthesis style adapts accordingly
 - `Ctrl+N` creates a new session, `Ctrl+S` exports the current run to markdown, `Ctrl+Q` quits
@@ -232,6 +254,8 @@ The mode changes:
 ### Future Ideas
 - **MMLU benchmark (no tools)**: Strip the swarm of all tools (no search, no code exec, no vision) and run on MMLU. Tests whether multi-agent debate + synthesis beats single-model baselines on pure reasoning alone. Key question: does the orchestrate → synthesize pipeline add value beyond asking one good model?
 - **BrowserComp benchmark**: Run the swarm on BrowserComp (web interaction tasks) using browser_navigate/click/type tools. Tests the swarm's ability to coordinate multi-step browser workflows across workers. Pipeline mode especially relevant here — one worker researches, another fills forms, a third verifies.
+- **Hermes plugin (Phase 2)**: Expose the swarm as a `swarm_research` tool in Hermes's tool registry via a subprocess wrapper in `swarm/integrations/hermes/`. Hermes agents call it like any other tool.
+- **MCP server (Phase 3)**: Expose the swarm over Model Context Protocol so any MCP client (Claude Desktop, Cursor, opencode, Hermes) can use it. The `run_swarm()` API is already tool-shaped (goal in, dict out).
 
 ## Common Pitfalls
 

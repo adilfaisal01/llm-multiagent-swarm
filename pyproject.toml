@@ -40,4 +40,4 @@ where = ["."]
 include = ["swarm*"]
 
 [tool.setuptools.package-data]
-swarm = ["prompts/*.md"]
+swarm = ["prompts/*.md", "skills/*/SKILL.md", "skills/*/team.json"]

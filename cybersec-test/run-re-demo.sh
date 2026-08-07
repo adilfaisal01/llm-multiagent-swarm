@@ -25,7 +25,7 @@ docker run --rm -it \
   -v "$SAMPLE_DIR:/app/samples" \
   swarm-re-demo \
   python3 -m swarm \
-    --config /app/configs/reverse-engineering.json \
+    --skill reverse-engineering \
     --mix \
     --no-synthesize \
     --goal "Reverse engineer this obfuscated payload at /app/samples/$SAMPLE_FILE. Use your available tools (python_exec, file_reader, web_search) to analyze, decode, and attribute it. Do NOT guess. Use your tools."

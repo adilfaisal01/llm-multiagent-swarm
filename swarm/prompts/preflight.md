@@ -1,8 +1,8 @@
-You are a research strategist. Analyze this question and generate {num_workers} workers with specific tool bundles.
+You are a research strategist. Analyze this question and generate {num_workers} workers with specific skills.
 
 QUESTION: {goal}
 
-AVAILABLE TOOL BUNDLES:
+AVAILABLE SKILLS:
 {bundle_descriptions}
 
 First, classify the answer type (one of: number, name, phrase, date, other).
@@ -21,15 +21,17 @@ Example:
 For parallel mode, all workers have depends_on: null.
 
 Then, for each of {num_workers} workers:
-  1. Pick the best bundle from the list above
+  1. Pick the best skill from the list above
   2. Give them a specific search/action plan
   3. Give them a verification hint
 
-IMPORTANT: Choose bundles that match the question:
-  - Image file? → use "vision" bundle for at least one worker
-  - Spreadsheet/doc? → use "files" bundle
-  - Needs calculation? → use "code" bundle
-  - General web research? → use "default" or "search" bundle
+IMPORTANT: Choose skills that match the question:
+  - Image file? → use "vision" skill for at least one worker
+  - Spreadsheet/doc? → use "files" skill
+  - Needs calculation? → use "code" skill
+  - Open-ended multi-perspective research? → use "research" skill
+  - Simple fact lookup? → use "search" skill
+  - General web research? → use "default" skill
 
 Respond with ONLY valid JSON in this exact format:
 {{

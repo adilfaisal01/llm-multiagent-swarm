@@ -33,6 +33,8 @@ def main(argv=None):
                     help="Mix different models per worker (Vera/Cyrus/Romy/etc)")
     ap.add_argument("--config", default=None,
                     help="Path to JSON config file (default: swarm_config.json)")
+    ap.add_argument("--skill", default=None,
+                    help="Use a named skill from swarm/skills/ (loads its team.json if present)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--synthesize", action="store_true", default=True,
                     help="Orchestrator synthesizes all worker reports into a unified answer")
@@ -52,6 +54,10 @@ def main(argv=None):
         print("  [ERROR] --goal cannot be empty. Swarm needs a question to research!", file=sys.stderr)
         sys.exit(1)
 
+    if args.skill and args.config:
+        print("  [ERROR] --skill and --config are mutually exclusive. Use one or the other.", file=sys.stderr)
+        sys.exit(1)
+
     # Run the swarm via the library entry point
     result = run_swarm(
         goal=goal,
@@ -61,6 +67,7 @@ def main(argv=None):
         model=args.model,
         angle=args.angle,
         config_path=args.config,
+        skill=args.skill,
         json_mode=args.json,
         synthesize=args.synthesize,
     )

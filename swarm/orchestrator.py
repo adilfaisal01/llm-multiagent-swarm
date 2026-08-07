@@ -3,7 +3,7 @@
 The orchestrator:
 1. Creates a write-only scratchpad
 2. Builds worker configs from team/angles
-3. Preflight: analyzes question → assigns tool bundles via LLM
+3. Preflight: analyzes question → assigns skills via LLM
 4. Spawns workers (parallel or pipeline mode based on dependencies)
 5. Collects results and scratchpad data
 6. Destroys the scratchpad
@@ -19,13 +19,15 @@ from .scratchpad import Scratchpad, set_scratchpad, get_scratchpad
 from .worker import run_worker
 from .synthesis import synthesize as run_synthesis
 from .preflight import analyze_question, build_worker_prompt
-from .tools import get_registry
+from .skills import get_skill_registry
 
 
-def _get_tool_names_for_bundle(bundle_name: str) -> list[str]:
-    """Get the tool names for a bundle from the registry."""
-    reg = get_registry()
-    return list(reg._bundles.get(bundle_name, []))
+def _get_tool_names_for_skill(skill_name: str) -> list[str]:
+    """Get the tool names for a skill from the skill registry."""
+    skill = get_skill_registry().get(skill_name)
+    if skill is None:
+        return []
+    return list(skill.tools)
 
 
 def _extract_file_path(goal: str) -> str | None:
@@ -130,10 +132,13 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
                 ollama_base: str = "http://localhost:11434",
                 synthesize: bool = True,
                 synthesis_model: str | None = None,
+                skill: str | None = None,
                 progress_callback=None) -> dict:
     """Run the swarm and return results with scratchpad data.
 
     Args:
+        skill: If set, all workers use this skill's tool bundle and prompt
+            body (overrides preflight skill assignment). Used by --skill.
         progress_callback: Optional callable(event, payload) receiving
             preflight_start, preflight_done, worker_start, worker_done,
             synthesis_start, synthesis_done, done events.
@@ -159,16 +164,16 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     strategies = preflight["strategies"]
     answer_type = preflight["answer_type"]
     research_mode = preflight.get("research_mode", "objective")
-    bundle_assignments = preflight.get("bundles", ["default"] * num_workers)
+    skill_assignments = preflight.get("skills", preflight.get("bundles", ["default"] * num_workers))
     execution_mode = preflight.get("mode", "parallel")
     depends_on = preflight.get("depends_on", [None] * num_workers)
     print(f"  [PREFLIGHT] Answer type: {answer_type} | Mode: {execution_mode} | Research mode: {research_mode} | {len(strategies)} strategies", file=sys.stderr)
-    print(f"  [PREFLIGHT] Assigned bundles: {', '.join(bundle_assignments)}", file=sys.stderr)
+    print(f"  [PREFLIGHT] Assigned skills: {', '.join(skill_assignments)}", file=sys.stderr)
     progress_callback("preflight_done", {
         "answer_type": answer_type,
         "research_mode": research_mode,
         "mode": execution_mode,
-        "bundles": bundle_assignments,
+        "skills": skill_assignments,
         "depends_on": depends_on,
         "strategies": strategies,
     })
@@ -183,8 +188,8 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
     workers = []
     for i in range(num_workers):
         strategy = strategies[i] if i < len(strategies) else strategies[0]
-        tool_bundle = bundle_assignments[i]
-        tool_names = _get_tool_names_for_bundle(tool_bundle)
+        tool_bundle = skill if skill else skill_assignments[i]
+        tool_names = _get_tool_names_for_skill(tool_bundle)
 
         if mix and team:
             member = team[i % len(team)]
@@ -217,7 +222,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str = None,
         names = [f"{w['name']}({w['model'].split(':')[0]})" for w in workers]
         print(f"  Team: {', '.join(names)}", file=out)
     print(f"  Goal: {goal[:100]}", file=out)
-    print(f"  Bundles: {', '.join(bundle_assignments)}", file=out)
+    print(f"  Skills: {', '.join([skill] * num_workers) if skill else ', '.join(skill_assignments)}", file=out)
     if execution_mode == "pipeline":
         print(f"  Mode: pipeline 🔗", file=out)
     else:

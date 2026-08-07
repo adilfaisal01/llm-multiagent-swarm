@@ -32,6 +32,22 @@ class TestArgumentValidation(unittest.TestCase):
         self.assertNotEqual(ctx.exception.code, 0)
         mock_run.assert_not_called()
 
+    @patch("swarm.__main__.run_swarm")
+    @patch("swarm.__main__.print_summary")
+    @patch("swarm.__main__.save_markdown")
+    def test_main_parses_skill_flag(self, mock_save, mock_print, mock_run):
+        mock_run.return_value = {"goal": "test", "num_workers": 3, "wall_time_s": 1.0}
+        main(["--goal", "test", "--skill", "research"])
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs["skill"], "research")
+
+    @patch("swarm.__main__.run_swarm")
+    def test_main_rejects_skill_and_config_together(self, mock_run):
+        with self.assertRaises(SystemExit) as ctx:
+            main(["--goal", "test", "--skill", "research", "--config", "x.json"])
+        self.assertNotEqual(ctx.exception.code, 0)
+        mock_run.assert_not_called()
+
     @patch("swarm.tui.run_tui")
     def test_tui_flag_routes_to_tui(self, mock_tui):
         with patch("swarm.__main__.run_swarm") as mock_run:

@@ -20,18 +20,18 @@ python3 -m swarm --tui
                          │   python3 -m swarm --goal "..."   │
                          └──────────────┬──────────────────────┘
                                         │
-                         ┌──────────────▼──────────────────────┐
-                         │         ORCHESTRATOR               │
-                         │  • Parses --goal, --mix, --config  │
-                         │  • Loads swarm_config.json         │
-                         │  • Estimates complexity (1-5)      │
-                         │  • Preflight: LLM analyzes question│
-                         │  • LLM assigns tool bundles+mode   │
-                         │  • Spawns workers (parallel|pipeline)│
-                         │  • Reads scratchpad after workers  │
-                         │  • Destroys scratchpad, saves .md  │
-                         └──────┬──────┬──────┬──────┬───────┘
-                                │      │      │      │
+                          ┌──────────────▼──────────────────────┐
+                          │         ORCHESTRATOR               │
+                          │  • Parses --goal, --mix, --config  │
+                          │  • Loads swarm_config.json         │
+                          │  • Estimates complexity (1-5)      │
+                          │  • Preflight: LLM analyzes question│
+                          │  • LLM assigns skills+mode         │
+                          │  • Spawns workers (parallel|pipeline)│
+                          │  • Reads scratchpad after workers  │
+                          │  • Destroys scratchpad, saves .md  │
+                          └──────┬──────┬──────┬──────┬───────┘
+                                 │      │      │      │
           ┌─────────────────────┼──────┼──────┼──────┼─────────────────────┐
           │                     │      │      │      │                     │
           ▼                     ▼      ▼      ▼      ▼                     ▼
@@ -41,24 +41,24 @@ python3 -m swarm --tui
    │ 120B      │        │ 30B       │ │ 31B       │ │ ~158B     │  │ 120B      │
    │           │        │           │ │           │ │           │  │           │
    │vision     │        │  code     │ │ default   │ │ search    │  │ files     │
-   │ bundle    │        │  bundle   │ │ bundle    │ │ bundle    │  │ bundle    │
+   │ skill     │        │  skill    │ │ skill     │ │ skill     │  │ skill     │
    └─────┬─────┘        └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  └─────┬─────┘
-         │                    │             │             │              │
-         └──────────┬─────────┘             │             │              │
-                    │                       │             │              │
-         ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
-         │                  MODULAR TOOL REGISTRY                               │
-         │                                                                      │
-         │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
-         │  │  web_search  │ │ web_extract  │ │  read_image  │ │ python_exec│  │
-         │  │  (search web)│ │ (read URL)   │ │ (vision OCR) │ │ (run code) │  │
-         │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘  │
-         │                                                                      │
-         │  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────────────┐  │
-         │  │  read_file   │ │scratchpad_add│ │      SCRATCHPAD (SQLite)    │  │
-         │  │(txt/csv/xlsx)│ │ (log finding)│ │  Write-only, auto-logged    │  │
-         │  └──────────────┘ └──────────────┘ └─────────────────────────────┘  │
-         └──────────────────────────────────────────────────────────────────────┘
+          │                    │             │             │              │
+          └──────────┬─────────┘             │             │              │
+                     │                       │             │              │
+          ┌──────────▼───────────────────────▼─────────────▼──────────────▼──────┐
+          │                  MODULAR TOOL REGISTRY                               │
+          │                                                                      │
+          │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐  │
+          │  │  web_search  │ │ web_extract  │ │  read_image  │ │ python_exec│  │
+          │  │  (search web)│ │ (read URL)   │ │ (vision OCR) │ │ (run code) │  │
+          │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────┘  │
+          │                                                                      │
+          │  ┌──────────────┐ ┌──────────────┐ ┌─────────────────────────────┐  │
+          │  │  read_file   │ │scratchpad_add│ │      SCRATCHPAD (SQLite)    │  │
+          │  │(txt/csv/xlsx)│ │ (log finding)│ │  Write-only, auto-logged    │  │
+          │  └──────────────┘ └──────────────┘ └─────────────────────────────┘  │
+          └──────────────────────────────────────────────────────────────────────┘
                                         │
                          ┌──────────────▼──────────────────────┐
                          │         OUTPUT                      │
@@ -71,7 +71,7 @@ python3 -m swarm --tui
                          └─────────────────────────────────────┘
 ```
 
-Each worker is an independent Ollama model with a **tool bundle** assigned by the preflight LLM. The orchestrator analyzes the question, determines what tools are needed, and gives each worker tailored capabilities. Workers can search the web, read files, analyze images, and run Python code — all in parallel via `ThreadPoolExecutor` or sequentially in pipeline mode when dependencies exist. Every tool call result is automatically logged to the scratchpad. The orchestrator collects everything, optionally synthesizes the findings, and saves the full output to a timestamped `.md` file.
+Each worker is an independent Ollama model with a **skill** assigned by the preflight LLM. The orchestrator analyzes the question, determines what tools are needed, and gives each worker tailored capabilities. Workers can search the web, read files, analyze images, and run Python code — all in parallel via `ThreadPoolExecutor` or sequentially in pipeline mode when dependencies exist. Every tool call result is automatically logged to the scratchpad. The orchestrator collects everything, optionally synthesizes the findings, and saves the full output to a timestamped `.md` file.
 
 ## Quick start
 
@@ -99,6 +99,10 @@ python3 -m swarm --goal "Your question" --model qwen --workers 3
 
 # JSON output for programmatic use
 python3 -m swarm --goal "Your question" --mix --json
+
+# Use a named skill (loads its team.json if it ships one)
+python3 -m swarm --skill research --goal "Your research question"
+python3 -m swarm --skill reverse-engineering --goal "Reverse engineer this payload at /path/to/payload.js"
 
 # Persistent TUI with session history and follow-ups
 python3 -m swarm --tui
@@ -141,8 +145,8 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 
 ### Available tools
 
-| Tool | Description | Used by bundles |
-|------|-------------|-----------------|
+| Tool | Description | Used by skills |
+|------|-------------|----------------|
 | `web_search` | Search the web (DuckDuckGo/SearXNG/Google) | all |
 | `web_extract` | Read content from a URL | all |
 | `scratchpad_add` | Log raw findings to the shared scratchpad | all |
@@ -150,26 +154,51 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `read_file` | Read .txt, .csv, .json, .xml, .xlsx files | files, all |
 | `python_exec` | Execute Python code for calculations/processing | code, all |
 
-### Tool bundles
+### Skills (capability packs)
 
-Preflight assigns a tool bundle to each worker based on the question. Bundles are **additive** — specialty bundles include search + scratchpad + their unique tools.
+Skills live in `swarm/skills/<name>/SKILL.md` and are the single source of truth for what a worker can do. Each skill declares its tool list, behavior rules (the markdown body), and optional team config in YAML frontmatter. Skills reference tools **by name** — all tool implementations live in `swarm/tools/`.
 
-| Bundle | Tools | When assigned |
-|--------|-------|--------------|
-| `default` | web_search, web_extract, scratchpad_add | General research questions |
+```markdown
+---
+name: vision
+description: "Has read_image tool — use for questions with image attachments (.png/.jpg)."
+triggers: [image, png, jpg, screenshot]
+tools: [read_image, web_search, web_extract, scratchpad_add]
+recommended_model: gemma4:31b-cloud
+---
+
+CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:
+1. CALL read_image NOW with the ATTACHED FILE path.
+...
+```
+
+| Skill | Tools | When assigned |
+|-------|-------|--------------|
+| `default` | web_search, web_extract, scratchpad_add | Fallback when no more specific skill fits |
+| `research` | web_search, web_extract, scratchpad_add | Open-ended multi-perspective research (ships a 5-worker team) |
+| `search` | web_search, web_extract | Simple fact lookups (no scratchpad) |
 | `vision` | read_image, web_search, web_extract, scratchpad_add | Questions with image attachments (.png/.jpg) |
 | `code` | python_exec, web_search, web_extract, scratchpad_add | Questions needing computation ("calculate", "average") |
 | `files` | read_file, read_image, web_search, web_extract, scratchpad_add | Questions with attached data files (.xlsx/.csv/.docx) |
-| `search` | web_search, web_extract | Lightweight search-only (no scratchpad) |
-| `scratchpad` | scratchpad_add | Logging-only (no search) |
-| `all` | Every registered tool | Everything (debugging) |
+| `reverse-engineering` | python_exec, web_search, web_extract, read_file, read_image, scratchpad_add | Obfuscated payload analysis (ships a 5-worker team) |
+
+**Full-pack skills** (`research`, `reverse-engineering`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
+
+```bash
+python3 -m swarm --skill research --goal "Your research question"
+python3 -m swarm --skill reverse-engineering --goal "Reverse engineer this payload at /path/to/payload.js"
+```
+
+**Customizing a skill:** edit its `team.json` (workers/models/angles/prompts) or copy the folder to `swarm/skills/research-<topic>/`, update the `name` field in `SKILL.md`, and run with `--skill research-<topic>`. No code changes needed.
+
+**Hermes compatibility:** every `SKILL.md` uses YAML `---` frontmatter with Hermes-style fields (`name`, `description`, `version`, `tags`, `trigger`, `related_skills`, `platforms`) and a `## Running under Hermes` section. Hermes users can read any skill natively, copy a folder into `~/.hermes/skills/`, or adapt the documented workflow to `delegate_task`.
 
 ### Preflight question analysis
 
 Before spawning workers, the orchestrator runs a **preflight** pass using the orchestrator model (DeepSeek V4 Flash):
 
 1. **Classifies answer type**: number, name, phrase, date, or other
-2. **Assigns tool bundles via LLM**: The model reasons about what tools each worker needs and assigns the right bundle (`vision` for images, `code` for calculations, `files` for spreadsheets, etc.)
+2. **Assigns skills via LLM**: The model reasons about what tools each worker needs and assigns the right skill (`vision` for images, `code` for calculations, `files` for spreadsheets, etc.)
 3. **Decides execution mode**: Outputs `parallel` or `pipeline` based on whether workers have sequential dependencies
 4. **Generates search strategies**: Each worker gets a specific, actionable plan tailored to the question
 5. **Injects file paths**: For file-based questions, the file path is injected into the worker prompt — workers are aggressively prompted to use their tools to read it (never guess)
@@ -220,12 +249,11 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 
 The `swarm_config.json` file lets you customize models, team members, prompts, angles, and fallback models. Pass a custom config with `--config my_config.json` or `SWARM_CONFIG=my_config.json`.
 
+A config may also declare a `"skill"` field — the skill's prompt body and tools are used with the JSON's team:
+
 ```json
 {
-  "models": {
-    "my-model": "my-model:latest"
-  },
-  "default_model": "my-model",
+  "skill": "research",
   "team": [
     {
       "name": "Agent1",
@@ -390,7 +418,7 @@ Run with `python3 -m swarm --tui`:
 │   ├── __main__.py        # CLI entry point (thin wrapper)
 │   ├── runner.py          # Library entry point: run_swarm()
 │   ├── orchestrator.py    # Spawns workers, manages scratchpad
-│   ├── preflight.py       # LLM-based question analysis + bundle assignment
+│   ├── preflight.py       # LLM-based question analysis + skill assignment
 │   ├── worker.py          # Worker agent loop with tool access
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
@@ -398,10 +426,21 @@ Run with `python3 -m swarm --tui`:
 │   ├── config.py          # Config loader + defaults
 │   ├── complexity.py      # Model-based complexity estimation
 │   ├── output.py          # Output formatting + markdown saving
-│   └── tools/             # Modular tool registry
+│   ├── skills/            # Skill system (capability packs)
+│   │   ├── __init__.py    # SkillRegistry, get_skill_registry()
+│   │   ├── _base.py       # Skill dataclass + registry + YAML parser
+│   │   ├── default/SKILL.md
+│   │   ├── research/      # Full pack: SKILL.md + team.json
+│   │   ├── search/SKILL.md
+│   │   ├── vision/SKILL.md
+│   │   ├── code/SKILL.md
+│   │   ├── files/SKILL.md
+│   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
+│   ├── integrations/      # External harness adapters (Hermes plugin, future)
+│   ├── tools/             # Modular tool registry
 │   │   ├── __init__.py    # Registry: get_registry(), reset_registry()
 │   │   ├── base.py        # BaseTool abstract class
-│   │   ├── registry.py    # ToolRegistry: discover, register, bundle
+│   │   ├── registry.py    # ToolRegistry: discover, register, skill delegation
 │   │   ├── web_search.py  # Search the web
 │   │   ├── web_extract.py # Read content from URLs
 │   │   ├── scratchpad.py  # Log findings tool
@@ -414,7 +453,6 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── worker.md      # Worker system prompt template
 │   │   ├── synthesis.md   # Synthesis prompt template
 │   │   ├── mode_*.md      # Objective / subjective mode instructions
-│   │   ├── bundle_*.md    # Per-bundle tool-forcing rules
 │   │   └── fallback_*.md  # Fallback model prompts
 │   └── tui/               # Optional persistent Textual TUI
 │       ├── __init__.py    # Exports run_tui, Session, SessionStore
@@ -422,6 +460,12 @@ Run with `python3 -m swarm --tui`:
 │       ├── session.py     # In-memory session model + follow-up context
 │       ├── store.py       # SQLite persistence for sessions/results
 │       └── widgets.py     # ChatLog, WorkerGrid, SessionList, InputBar
+├── cybersec-test/         # Reverse-engineering demo wrapper
+│   ├── README.md          # Demo documentation
+│   ├── run-re-demo.sh     # One-shot demo script (--skill reverse-engineering)
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── samples/           # Obfuscated payload samples
 ├── demo-swarm/            # Original research version (demo)
 │   ├── __init__.py
 │   ├── __main__.py

@@ -1,0 +1,6 @@
+# Core runtime dependency (TUI only — the swarm core is pure stdlib)
+textual>=0.70.0
+
+# Development / test dependencies
+pytest>=8.0
+pytest-asyncio>=0.23.0
