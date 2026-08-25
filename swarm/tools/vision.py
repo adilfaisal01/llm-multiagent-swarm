@@ -62,7 +62,7 @@ class ReadImage(BaseTool):
             return f"[ReadImage error: {e}]"
 
         payload = json.dumps({
-            "model": "gemma4:31b-cloud",  # vision model
+            "model": "qwen3.5:397b-cloud",  # vision model (bake-off winner Aug 2026: most precise on values/scales/app-ID, clean content output)
             "messages": [
                 {"role": "user", "content": question, "images": [img_b64]}
             ],
