@@ -21,6 +21,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `sql_query` | `sql_query.py` | Run read-only SELECT queries on a local SQLite DB | findings | no |
 | `regex_extract` | `regex_extract.py` | Extract structured data from text with a regex | none | no |
 | `text_diff` | `text_diff.py` | Unified diff between two text blobs | none | no |
+| `date_calculator` | `date_calculator.py` | Date arithmetic: days between, weekday, age, offsets | none | no |
 
 ## Optional-extras tools
 

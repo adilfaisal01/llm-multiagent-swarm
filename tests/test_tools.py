@@ -620,6 +620,65 @@ class TestTextDiffTool(unittest.TestCase):
         self.assertIn("+++ source", result)
 
 
+class TestDateCalculatorTool(unittest.TestCase):
+    """swarm/tools/date_calculator.py — DateCalculator."""
+
+    def setUp(self):
+        self.reg = _fresh_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def test_no_operation_returns_error(self):
+        result = self.reg.execute("date_calculator", {"date1": "2020-01-01"})
+        self.assertEqual(result, "Error: no operation provided")
+
+    def test_no_date1_returns_error(self):
+        result = self.reg.execute("date_calculator", {"operation": "weekday"})
+        self.assertEqual(result, "Error: no date1 provided")
+
+    def test_invalid_date_returns_error(self):
+        result = self.reg.execute("date_calculator", {"operation": "weekday", "date1": "not-a-date"})
+        self.assertIn("invalid date1", result)
+
+    def test_days_between(self):
+        result = self.reg.execute(
+            "date_calculator", {"operation": "days_between", "date1": "2024-01-01", "date2": "2024-01-31"}
+        )
+        self.assertIn("30 days", result)
+
+    def test_days_between_absolute(self):
+        result = self.reg.execute(
+            "date_calculator", {"operation": "days_between", "date1": "2024-01-31", "date2": "2024-01-01"}
+        )
+        self.assertIn("30 days", result)  # order-independent
+
+    def test_weekday(self):
+        result = self.reg.execute("date_calculator", {"operation": "weekday", "date1": "2024-07-04"})
+        self.assertIn("Thursday", result)
+
+    def test_age(self):
+        result = self.reg.execute("date_calculator", {"operation": "age", "date1": "2000-01-01"})
+        self.assertIn("years", result)
+
+    def test_add_days(self):
+        result = self.reg.execute("date_calculator", {"operation": "add_days", "date1": "2024-01-01", "days": 10})
+        self.assertIn("2024-01-11", result)
+
+    def test_subtract_days(self):
+        result = self.reg.execute("date_calculator", {"operation": "add_days", "date1": "2024-01-11", "days": -10})
+        self.assertIn("2024-01-01", result)
+
+    def test_missing_days_returns_error(self):
+        result = self.reg.execute("date_calculator", {"operation": "add_days", "date1": "2024-01-01"})
+        self.assertIn("days must be provided", result)
+
+    def test_unknown_operation_returns_error(self):
+        result = self.reg.execute("date_calculator", {"operation": "nope", "date1": "2024-01-01"})
+        self.assertIn("unknown operation", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 

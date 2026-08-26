@@ -74,7 +74,8 @@ swarm/
     ├── pdf_extract.py # Read PDFs (optional pdf extra)
     ├── sql_query.py # Run read-only SQL against a local DB
     ├── regex_extract.py # Extract structured data from text
-    └── text_diff.py # Unified diff between two texts
+    ├── text_diff.py # Unified diff between two texts
+    └── date_calculator.py # Date arithmetic (days between, weekday, age)
 ```
 
 ## Key Design Decisions

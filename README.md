@@ -205,6 +205,7 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `sql_query` | Run read-only SQL against a local SQLite DB | files, code, all |
 | `regex_extract` | Extract structured data from text via regex | files, code, all |
 | `text_diff` | Unified diff between two texts | files, code, all |
+| `date_calculator` | Date arithmetic: days between, weekday, age | code, research, all |
 
 The full catalog (including new tools added incrementally) lives in
 [`docs/TOOLS.md`](docs/TOOLS.md).
@@ -573,7 +574,8 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── pdf_extract.py # Read PDFs (optional pdf extra)
 │   │   ├── sql_query.py # Run read-only SQL against a local DB
 │   │   ├── regex_extract.py # Extract structured data from text
-│   │   └── text_diff.py # Unified diff between two texts
+│   │   ├── text_diff.py # Unified diff between two texts
+│   │   └── date_calculator.py # Date arithmetic (days between, weekday, age)
 │   ├── prompts/           # External markdown prompt templates
 │   │   ├── __init__.py    # load_prompt() and render_prompt()
 │   │   ├── preflight.md   # Preflight JSON-generation prompt
