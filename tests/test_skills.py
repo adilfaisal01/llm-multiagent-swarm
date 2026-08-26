@@ -107,7 +107,8 @@ class TestSkillRegistry(unittest.TestCase):
         sr = get_skill_registry()
         names = sr.names()
         for expected in ("default", "research", "search", "vision", "code", "files",
-                         "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison"):
+                         "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison",
+                         "academic"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -190,6 +191,22 @@ class TestSkillRegistry(unittest.TestCase):
         names = [t.name for t in tools]
         self.assertIn("web_search", names)
         self.assertIn("web_extract", names)
+
+    def test_academic_skill_tools_and_team(self):
+        sr = get_skill_registry()
+        skill = sr.get("academic")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        self.assertIn("arxiv_search", skill.tools)
+        self.assertIn("wikipedia_search", skill.tools)
+        self.assertIn("pdf_extract", skill.tools)
+        tools = sr.tools_for("academic")
+        names = [t.name for t in tools]
+        self.assertIn("arxiv_search", names)
+        self.assertIn("pdf_extract", names)
+        team = sr.load_team("academic")
+        assert team is not None
+        self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 
     def test_unknown_skill_returns_none(self):
         sr = get_skill_registry()

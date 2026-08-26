@@ -33,6 +33,7 @@ IMPORTANT: Choose skills that match the question:
   - Verifying a claim / fact-checking? → use "fact-check" skill
   - Chaining facts across sources (A→B→C)? → use "multi-hop" skill (pipeline mode)
   - Comparing products/tools/options? → use "comparison" skill
+  - Academic literature / papers / methodology? → use "academic" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill

@@ -40,6 +40,7 @@ swarm/
 │   ├── fact-check/   # Full pack: SKILL.md + team.json
 │   ├── multi-hop/SKILL.md
 │   ├── comparison/SKILL.md
+│   ├── academic/     # Full pack: SKILL.md + team.json
 │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 ├── integrations/     # External harness adapters
 │   └── mcp/          # MCP server: swarm_research tool (optional mcp extra)
@@ -116,9 +117,10 @@ Skills reference tools **by name** — all tool implementations live in `swarm/t
 - `fact-check` — web_search, web_extract, scratchpad_add (ships a 5-worker team.json)
 - `multi-hop` — web_search, web_extract, scratchpad_add (pipeline mode for chained facts)
 - `comparison` — web_search, web_extract, scratchpad_add (side-by-side option comparison)
+- `academic` — wikipedia_search, arxiv_search, web_search, web_extract, pdf_extract, scratchpad_add (ships a 5-worker team.json)
 - `reverse-engineering` — python_exec, web_search, web_extract, read_file, read_image, scratchpad_add (ships a 5-worker team.json)
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`) ship a `team.json` with named workers/models/angles. Use with `--skill <name>`. A `--config` JSON may also declare a `"skill"` field to use a skill's prompt body + tools with a custom team. `--skill` and `--config` are mutually exclusive.
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`) ship a `team.json` with named workers/models/angles. Use with `--skill <name>`. A `--config` JSON may also declare a `"skill"` field to use a skill's prompt body + tools with a custom team. `--skill` and `--config` are mutually exclusive.
 
 **Adding a skill:** create `swarm/skills/<name>/SKILL.md` with frontmatter + body. Auto-discovered, no code changes. Copy a full-pack skill to `swarm/skills/research-<topic>/` and edit `name` + `team.json` for a domain-specific pack.
 

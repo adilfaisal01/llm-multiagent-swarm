@@ -208,7 +208,8 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `date_calculator` | Date arithmetic: days between, weekday, age | code, research, all |
 
 The full catalog (including new tools added incrementally) lives in
-[`docs/TOOLS.md`](docs/TOOLS.md).
+[`docs/TOOLS.md`](docs/TOOLS.md). The full skill catalog lives in
+[`docs/SKILLS.md`](docs/SKILLS.md).
 
 ### Skills (capability packs)
 
@@ -241,13 +242,15 @@ CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:
 | `code-debug` | python_exec, read_file, web_search, web_extract, scratchpad_add | Debugging code, tracing errors, fixing bugs |
 | `multi-hop` | web_search, web_extract, scratchpad_add | Chaining facts across sources (pipeline mode) |
 | `comparison` | web_search, web_extract, scratchpad_add | Comparing products/tools/options side-by-side |
+| `academic` | wikipedia_search, arxiv_search, web_search, web_extract, pdf_extract, scratchpad_add | Academic literature / papers / methodology (ships a 5-worker team) |
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
 
 ```bash
 python3 -m swarm --skill research --goal "Your research question"
 python3 -m swarm --skill reverse-engineering --goal "Reverse engineer this payload at /path/to/payload.js"
 python3 -m swarm --skill fact-check --goal "Is it true that [claim]?"
+python3 -m swarm --skill academic --goal "What does the literature say about [topic]?"
 ```
 
 **Customizing a skill:** edit its `team.json` (workers/models/angles/prompts) or copy the folder to `swarm/skills/research-<topic>/`, update the `name` field in `SKILL.md`, and run with `--skill research-<topic>`. No code changes needed.
@@ -553,6 +556,7 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── fact-check/    # Full pack: SKILL.md + team.json
 │   │   ├── multi-hop/SKILL.md
 │   │   ├── comparison/SKILL.md
+│   │   ├── academic/      # Full pack: SKILL.md + team.json
 │   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 │   ├── integrations/      # External harness adapters
 │   │   └── mcp/           # MCP server: swarm_research tool (optional extra)
@@ -615,6 +619,8 @@ Run with `python3 -m swarm --tui`:
 ├── docs/                    # Documentation
 │   ├── TESTING.md           # Testing workflow (make targets + verbosity flag)
 │   ├── BENCHMARK.md         # Benchmark results
+│   ├── TOOLS.md             # Tool catalog
+│   ├── SKILLS.md            # Skill catalog
 │   └── RELEASE.md           # Release process (tags, versions, CHANGELOG)
 ├── scripts/                 # Helper scripts
 │   └── gen_changelog.py     # Auto-generates CHANGELOG.md from git log
