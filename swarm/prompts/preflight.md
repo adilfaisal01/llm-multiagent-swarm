@@ -29,6 +29,10 @@ IMPORTANT: Choose skills that match the question:
   - Image file? → use "vision" skill for at least one worker
   - Spreadsheet/doc? → use "files" skill
   - Needs calculation? → use "code" skill
+  - Debugging code / fixing a bug? → use "code-debug" skill
+  - Verifying a claim / fact-checking? → use "fact-check" skill
+  - Chaining facts across sources (A→B→C)? → use "multi-hop" skill (pipeline mode)
+  - Comparing products/tools/options? → use "comparison" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill

@@ -106,7 +106,8 @@ class TestSkillRegistry(unittest.TestCase):
     def test_discovers_all_builtin_skills(self):
         sr = get_skill_registry()
         names = sr.names()
-        for expected in ("default", "research", "search", "vision", "code", "files", "reverse-engineering"):
+        for expected in ("default", "research", "search", "vision", "code", "files",
+                         "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -153,6 +154,42 @@ class TestSkillRegistry(unittest.TestCase):
     def test_load_team_default_returns_none(self):
         sr = get_skill_registry()
         self.assertIsNone(sr.load_team("default"))
+
+    def test_load_team_fact_check(self):
+        sr = get_skill_registry()
+        team = sr.load_team("fact-check")
+        assert team is not None
+        names = [m["name"] for m in team["team"]]
+        self.assertEqual(names, ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
+
+    def test_fact_check_skill_metadata(self):
+        sr = get_skill_registry()
+        skill = sr.get("fact-check")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        self.assertIn("web_search", skill.tools)
+        self.assertIn("scratchpad_add", skill.tools)
+
+    def test_code_debug_has_python_and_file_tools(self):
+        sr = get_skill_registry()
+        tools = sr.tools_for("code-debug")
+        names = [t.name for t in tools]
+        self.assertIn("python_exec", names)
+        self.assertIn("read_file", names)
+        self.assertIn("web_search", names)
+
+    def test_multi_hop_is_pipeline_mode(self):
+        sr = get_skill_registry()
+        skill = sr.get("multi-hop")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "pipeline")
+
+    def test_comparison_skill_tools(self):
+        sr = get_skill_registry()
+        tools = sr.tools_for("comparison")
+        names = [t.name for t in tools]
+        self.assertIn("web_search", names)
+        self.assertIn("web_extract", names)
 
     def test_unknown_skill_returns_none(self):
         sr = get_skill_registry()
