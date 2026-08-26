@@ -150,7 +150,8 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
                 credible_domains: tuple = (".gov", ".edu", ".mil"),
                 retry_cfg: dict | None = None,
                 model_costs: dict | None = None,
-                ai_credibility: bool = True) -> dict:
+                ai_credibility: bool = True,
+                report: bool = False) -> dict:
     """Run the swarm and return results with scratchpad data.
 
     Args:
@@ -342,6 +343,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
             goal, result, model=syn_model, ollama_base=ollama_base,
             credible_domains=credible_domains,
             stream_cb=stream_callback,
+            report=report,
         )
         syn_elapsed = round(time.time() - syn_start, 1)
         synthesis_text = syn["synthesis"]

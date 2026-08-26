@@ -13,7 +13,7 @@ As a library:
 import argparse
 import sys
 
-from .output import format_json, print_summary, save_markdown
+from .output import format_json, print_summary, save_markdown, save_report
 from .runner import run_swarm
 
 
@@ -49,6 +49,8 @@ def main(argv=None):
                     help="Orchestrator synthesizes all worker reports into a unified answer")
     ap.add_argument("--no-synthesize", action="store_false", dest="synthesize",
                     help="Skip the synthesis step")
+    ap.add_argument("--report", action="store_true",
+                    help="Synthesize into a structured report (exec summary, findings, analysis, implications, recommendations) instead of an analytical take")
     ap.add_argument("--tui", action="store_true",
                     help="Launch the persistent Textual TUI instead of a single CLI run")
     args = ap.parse_args(argv)
@@ -79,6 +81,7 @@ def main(argv=None):
         skill=args.skill,
         json_mode=args.json,
         synthesize=args.synthesize,
+        report=args.report,
     )
 
     # Output
@@ -88,8 +91,11 @@ def main(argv=None):
     else:
         # Human-readable goes to stdout
         print_summary(result)
-        # Auto-save to markdown
-        filepath = save_markdown(result, result["goal"])
+        # Auto-save to markdown (report mode writes a clean report, else the full dump)
+        if args.report:
+            filepath = save_report(result, result["goal"])
+        else:
+            filepath = save_markdown(result, result["goal"])
         print(f"\n  💾 Saved to {filepath}")
 
 

@@ -90,7 +90,7 @@ def _append_sources_section(text: str, citations: list) -> str:
 def synthesize(goal: str, result: dict, model: str,
                ollama_base: str = "http://localhost:11434",
                credible_domains: tuple = (".gov", ".edu", ".mil"),
-               stream_cb=None) -> dict:
+               stream_cb=None, report: bool = False) -> dict:
     """Have the orchestrator model synthesize all worker findings into one answer.
 
     Args:
@@ -100,6 +100,8 @@ def synthesize(goal: str, result: dict, model: str,
         ollama_base: Ollama API base URL.
         credible_domains: Domain suffixes that boost source credibility.
         stream_cb: Optional callable(chunk, phase) for streaming synthesis.
+        report: If True, use the structured report synthesis prompt instead of
+            the analytical take.
 
     Returns:
         A dict with keys:
@@ -135,7 +137,10 @@ def synthesize(goal: str, result: dict, model: str,
     source_section = _build_source_section(sp, credible_domains)
 
     research_mode = result.get("research_mode", "objective")
-    synthesis_instructions = render_prompt(f"synthesis_{research_mode}")
+    if report:
+        synthesis_instructions = render_prompt("synthesis_report")
+    else:
+        synthesis_instructions = render_prompt(f"synthesis_{research_mode}")
 
     prompt = render_prompt(
         "synthesis",

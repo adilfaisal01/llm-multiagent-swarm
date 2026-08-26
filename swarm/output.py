@@ -137,6 +137,44 @@ def save_markdown(result: dict, goal: str, filepath: str | Path | None = None) -
     return str(filepath)
 
 
+def save_report(result: dict, goal: str, filepath: str | Path | None = None) -> str:
+    """Save a clean, structured report (synthesis + sources) to markdown.
+
+    Unlike save_markdown (the full research dump), this writes only the
+    report body — the structured synthesis with inline [N] citations plus
+    the numbered Sources section. Used with --report.
+
+    Args:
+        result: The swarm result dict from run_swarm().
+        goal: The original research question (used for filename).
+        filepath: Optional explicit path. Auto-generated if not provided.
+
+    Returns:
+        The path to the saved file.
+    """
+    if not filepath:
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        safe_name = re.sub(r'[^a-zA-Z0-9]+', '_', goal.strip()[:60]).strip('_')
+        if not safe_name:
+            safe_name = "swarm_report"
+        filepath = OUTPUT_DIR / f"report_{safe_name}_{int(time.time())}.md"
+
+    synthesis = result.get("synthesis", "")
+    with open(filepath, "w") as f:
+        f.write(f"# Report: {goal}\n\n")
+        f.write(f"**Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}  \n")
+        f.write(f"**Wall time:** {result['wall_time_s']}s  \n")
+        f.write(f"**Workers:** {result['num_workers']}  \n")
+        f.write(f"**Models:** {', '.join(result['models'])}\n\n")
+        f.write("---\n\n")
+        if synthesis and not synthesis.startswith("[Synthesis error"):
+            f.write(f"{synthesis}\n")
+        else:
+            f.write("*(No synthesis produced.)*\n")
+
+    return str(filepath)
+
+
 def format_json(result: dict) -> str:
     """Return swarm result as a pretty-printed JSON string."""
     return json.dumps(result, indent=2)

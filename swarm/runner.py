@@ -31,6 +31,7 @@ def run_swarm(
     progress_callback=None,
     stream_callback=None,
     ai_credibility: bool = True,
+    report: bool = False,
 ) -> dict:
     """Run the swarm and return results.
 
@@ -54,6 +55,9 @@ def run_swarm(
             "synthesis"}).
         ai_credibility: If True, an LLM judge refines source credibility
             scores into Bayesian posteriors (default True).
+        report: If True, synthesize into a structured report (exec summary,
+            findings, analysis, implications, recommendations) instead of an
+            analytical take.
 
     Returns:
         Dict with keys: goal, num_workers, models, wall_time_s, workers, scratchpad.
@@ -147,6 +151,7 @@ def run_swarm(
         retry_cfg=defaults["retry"],
         model_costs=defaults["model_costs"],
         ai_credibility=ai_credibility,
+        report=report,
     )
 
     return result
