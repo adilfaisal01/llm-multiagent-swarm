@@ -39,6 +39,9 @@ dev = [
 mcp = [
     "mcp>=1.0,<2.0",
 ]
+pdf = [
+    "pypdf>=4.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

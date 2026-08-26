@@ -70,7 +70,8 @@ swarm/
     ├── arxiv_search.py # Search arXiv for academic papers
     ├── github_search.py # Search GitHub repos/issues/code
     ├── wayback_machine.py # Find archived snapshots of URLs
-    └── http_request.py # Generic REST API client
+    ├── http_request.py # Generic REST API client
+    └── pdf_extract.py # Read PDFs (optional pdf extra)
 ```
 
 ## Key Design Decisions

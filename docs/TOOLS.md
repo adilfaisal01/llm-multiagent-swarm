@@ -17,6 +17,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `github_search` | `github_search.py` | Search GitHub repos/issues/code (`GITHUB_TOKEN` optional) | sources + findings | yes |
 | `wayback_machine` | `wayback_machine.py` | Find archived snapshots of a URL (Wayback Machine) | sources + findings | yes |
 | `http_request` | `http_request.py` | Generic REST API client (GET/POST/PUT/DELETE) | findings | yes |
+| `pdf_extract` | `pdf_extract.py` | Extract text from PDF files (requires `pdf` extra) | findings | no |
 
 ## Optional-extras tools
 
@@ -25,4 +26,4 @@ a clear error string if the extra is missing — the swarm core stays stdlib-onl
 
 | Tool | Extra | Install |
 |------|-------|---------|
-| *(reserved for pdf_extract)* | `pdf` | `pip install -e ".[pdf]"` |
+| `pdf_extract` | `pdf` | `pip install -e ".[pdf]"` |

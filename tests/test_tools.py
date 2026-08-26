@@ -397,6 +397,79 @@ class TestHttpRequestTool(_ScratchpadTestCase):
         self.assertIn("[HttpRequest error:", result)
 
 
+class TestPdfExtractTool(unittest.TestCase):
+    """swarm/tools/pdf_extract.py — PdfExtract."""
+
+    def setUp(self):
+        self.reg = _fresh_registry()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.pdf = self.dir / "paper.pdf"
+        self.pdf.write_bytes(b"%PDF-1.4 fake")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        reset_registry()
+        reset_skill_registry()
+
+    def test_no_path_returns_error(self):
+        result = self.reg.execute("pdf_extract", {})
+        self.assertEqual(result, "Error: no path provided")
+
+    def test_missing_file_returns_error(self):
+        result = self.reg.execute("pdf_extract", {"path": "/nonexistent/x.pdf"})
+        self.assertIn("file not found", result)
+
+    def test_missing_pypdf_returns_clear_error(self):
+        with patch.dict("sys.modules", {"pypdf": None}):
+            result = self.reg.execute("pdf_extract", {"path": str(self.pdf)})
+        self.assertIn("'pdf' extra", result)
+        self.assertIn("pip install -e '.[pdf]'", result)
+
+    def test_extracts_text_via_pypdf(self):
+        class _FakePage:
+            def extract_text(self):
+                return "Abstract: attention mechanisms."
+
+        class _FakeReader:
+            def __init__(self, *a, **k):
+                self.pages = [_FakePage()]
+
+        with patch.dict("sys.modules", {"pypdf": type("pypdf", (), {"PdfReader": _FakeReader})()}):
+            result = self.reg.execute("pdf_extract", {"path": str(self.pdf)})
+        self.assertIn("Abstract: attention mechanisms", result)
+
+    def test_single_page_selection(self):
+        class _FakePage:
+            def __init__(self, txt):
+                self.txt = txt
+
+            def extract_text(self):
+                return self.txt
+
+        class _FakeReader:
+            def __init__(self, *a, **k):
+                self.pages = [_FakePage("page one"), _FakePage("page two")]
+
+        with patch.dict("sys.modules", {"pypdf": type("pypdf", (), {"PdfReader": _FakeReader})()}):
+            result = self.reg.execute("pdf_extract", {"path": str(self.pdf), "page": 2})
+        self.assertIn("page two", result)
+        self.assertNotIn("page one", result)
+
+    def test_scanned_pdf_message(self):
+        class _FakePage:
+            def extract_text(self):
+                return ""
+
+        class _FakeReader:
+            def __init__(self, *a, **k):
+                self.pages = [_FakePage()]
+
+        with patch.dict("sys.modules", {"pypdf": type("pypdf", (), {"PdfReader": _FakeReader})()}):
+            result = self.reg.execute("pdf_extract", {"path": str(self.pdf)})
+        self.assertIn("scanned/image", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
