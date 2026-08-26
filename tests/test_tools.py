@@ -310,6 +310,51 @@ class TestGithubSearchTool(_ScratchpadTestCase):
         self.assertIn("[GithubSearch error:", result)
 
 
+class TestWaybackMachineTool(_ScratchpadTestCase):
+    """swarm/tools/wayback_machine.py — WaybackMachine."""
+
+    def test_no_url_returns_error(self):
+        result = self.reg.execute("wayback_machine", {})
+        self.assertEqual(result, "Error: no URL provided")
+
+    def test_returns_closest_snapshot(self):
+        data = {"archived_snapshots": {"closest": {
+            "url": "https://web.archive.org/web/20200101000000/https://example.com",
+            "timestamp": "20200101000000",
+        }}}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            result = self.reg.execute("wayback_machine", {"url": "https://example.com"})
+        self.assertIn("web.archive.org/web/20200101000000/https://example.com", result)
+        self.assertIn("20200101000000", result)
+
+    def test_logs_snapshot_to_scratchpad(self):
+        data = {"archived_snapshots": {"closest": {
+            "url": "https://web.archive.org/web/20200101000000/https://example.com",
+            "timestamp": "20200101000000",
+        }}}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            self.reg.execute("wayback_machine", {"url": "https://example.com"}, worker_name="Ash")
+        sources = self.sp.get_all_sources()
+        self.assertEqual(len(sources), 1)
+        self.assertIn("web.archive.org", sources[0][1])
+        self.assertEqual(len(self.sp.get_all_findings()), 1)
+
+    def test_no_snapshot_message(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+                json.dumps({"archived_snapshots": {}}).encode()
+            )
+            result = self.reg.execute("wayback_machine", {"url": "https://example.com"})
+        self.assertIn("No archive found", result)
+
+    def test_http_error_returns_error_string(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+            result = self.reg.execute("wayback_machine", {"url": "https://example.com"})
+        self.assertIn("[WaybackMachine error:", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
