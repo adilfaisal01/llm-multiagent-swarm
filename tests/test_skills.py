@@ -108,7 +108,8 @@ class TestSkillRegistry(unittest.TestCase):
         names = sr.names()
         for expected in ("default", "research", "search", "vision", "code", "files",
                          "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison",
-                         "academic", "legal", "medical", "finance", "data-analysis", "summarize"):
+                         "academic", "legal", "medical", "finance", "data-analysis", "summarize",
+                         "translate"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -278,6 +279,19 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIn("pdf_extract", names)
         self.assertIn("web_extract", names)
         team = sr.load_team("summarize")
+        assert team is not None
+        self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
+
+    def test_translate_skill_tools_and_team(self):
+        sr = get_skill_registry()
+        skill = sr.get("translate")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        tools = sr.tools_for("translate")
+        names = [t.name for t in tools]
+        self.assertIn("web_search", names)
+        self.assertIn("scratchpad_add", names)
+        team = sr.load_team("translate")
         assert team is not None
         self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 

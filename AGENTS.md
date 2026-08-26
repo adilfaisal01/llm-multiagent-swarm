@@ -46,6 +46,7 @@ swarm/
 │   ├── finance/      # Full pack: SKILL.md + team.json
 │   ├── data-analysis/# Full pack: SKILL.md + team.json (pipeline)
 │   ├── summarize/    # Full pack: SKILL.md + team.json
+│   ├── translate/    # Full pack: SKILL.md + team.json
 │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 ├── integrations/     # External harness adapters
 │   └── mcp/          # MCP server: swarm_research tool (optional mcp extra)
@@ -128,9 +129,10 @@ Skills reference tools **by name** — all tool implementations live in `swarm/t
 - `finance` — web_search, web_extract, http_request, sql_query, scratchpad_add (ships a 5-worker team.json)
 - `data-analysis` — read_file, sql_query, python_exec, regex_extract, scratchpad_add (ships a 5-worker team.json, pipeline)
 - `summarize` — read_file, pdf_extract, web_extract, python_exec, scratchpad_add (ships a 5-worker team.json)
+- `translate` — web_search, web_extract, scratchpad_add (ships a 5-worker team.json)
 - `reverse-engineering` — python_exec, web_search, web_extract, read_file, read_image, scratchpad_add (ships a 5-worker team.json)
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`, `data-analysis`, `summarize`) ship a `team.json` with named workers/models/angles. Use with `--skill <name>`. A `--config` JSON may also declare a `"skill"` field to use a skill's prompt body + tools with a custom team. `--skill` and `--config` are mutually exclusive.
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`, `data-analysis`, `summarize`, `translate`) ship a `team.json` with named workers/models/angles. Use with `--skill <name>`. A `--config` JSON may also declare a `"skill"` field to use a skill's prompt body + tools with a custom team. `--skill` and `--config` are mutually exclusive.
 
 **Adding a skill:** create `swarm/skills/<name>/SKILL.md` with frontmatter + body. Auto-discovered, no code changes. Copy a full-pack skill to `swarm/skills/research-<topic>/` and edit `name` + `team.json` for a domain-specific pack.
 
