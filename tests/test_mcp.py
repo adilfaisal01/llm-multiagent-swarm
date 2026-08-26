@@ -16,9 +16,8 @@ import json
 import unittest
 from unittest.mock import patch
 
-from swarm.integrations.mcp.server import _SERVER_NAME
-
 try:
+    from swarm.integrations.mcp.server import _SERVER_NAME
     from mcp.server.fastmcp import Context, FastMCP
     MCP_AVAILABLE = True
 except ImportError:
