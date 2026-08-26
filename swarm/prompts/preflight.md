@@ -35,6 +35,7 @@ IMPORTANT: Choose skills that match the question:
   - Comparing products/tools/options? → use "comparison" skill
   - Academic literature / papers / methodology? → use "academic" skill
   - Laws, statutes, court cases, legal questions? → use "legal" skill
+  - Health, treatments, drugs, medical evidence? → use "medical" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill
