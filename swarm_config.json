@@ -4,18 +4,20 @@
     "nemotron": "nemotron-3-super:cloud",
     "nemotron-super": "nemotron-3-super:cloud",
     "gpt-oss": "gpt-oss:120b-cloud",
+    "glm-5.3-flash": "glm-5.3-flash:cloud",
     "gemma": "gemma4:31b-cloud",
     "gemma-vision": "gemma4:31b-cloud",
     "qwen": "qwen3.5:397b-cloud",
     "deepseek": "deepseek-v4-pro:cloud",
     "flash": "deepseek-v4-flash:cloud",
-    "kimi": "kimi-k2.6:cloud"
+    "kimi": "kimi-k2.6:cloud",
+    "minimax": "minimax-m3:cloud"
   },
   "default_model": "gpt-oss",
   "team": [
     {
       "name": "Vera",
-      "model": "gpt-oss",
+      "model": "glm-5.3-flash",
       "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started.",
       "prompt": "You are Vera, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
     },
@@ -39,7 +41,7 @@
     },
     {
       "name": "Zara",
-      "model": "gpt-oss",
+      "model": "minimax",
       "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood.",
       "prompt": "You are Zara, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
     }
