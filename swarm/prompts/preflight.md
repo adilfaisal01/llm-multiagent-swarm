@@ -36,6 +36,7 @@ IMPORTANT: Choose skills that match the question:
   - Academic literature / papers / methodology? → use "academic" skill
   - Laws, statutes, court cases, legal questions? → use "legal" skill
   - Health, treatments, drugs, medical evidence? → use "medical" skill
+  - Companies, markets, financials, valuation? → use "finance" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill

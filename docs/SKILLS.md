@@ -21,3 +21,4 @@ recommended model, optional team, and mode. Full-pack skills also ship a
 | `academic` | wikipedia_search, arxiv_search, web_search, web_extract, pdf_extract, scratchpad_add | parallel | yes (5) | Academic literature / papers / methodology |
 | `legal` | web_search, web_extract, wayback_machine, scratchpad_add | parallel | yes (5) | Laws, statutes, court cases, legal questions |
 | `medical` | wikipedia_search, arxiv_search, web_search, web_extract, scratchpad_add | parallel | yes (5) | Health, treatments, drugs, medical evidence |
+| `finance` | web_search, web_extract, http_request, sql_query, scratchpad_add | parallel | yes (5) | Companies, markets, financials, valuation |

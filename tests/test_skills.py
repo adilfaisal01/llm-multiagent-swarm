@@ -108,7 +108,7 @@ class TestSkillRegistry(unittest.TestCase):
         names = sr.names()
         for expected in ("default", "research", "search", "vision", "code", "files",
                          "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison",
-                         "academic", "legal", "medical"):
+                         "academic", "legal", "medical", "finance"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -234,6 +234,21 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIn("web_search", names)
         self.assertIn("wikipedia_search", names)
         team = sr.load_team("medical")
+        assert team is not None
+        self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
+
+    def test_finance_skill_tools_and_team(self):
+        sr = get_skill_registry()
+        skill = sr.get("finance")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        self.assertIn("http_request", skill.tools)
+        self.assertIn("sql_query", skill.tools)
+        tools = sr.tools_for("finance")
+        names = [t.name for t in tools]
+        self.assertIn("http_request", names)
+        self.assertIn("web_search", names)
+        team = sr.load_team("finance")
         assert team is not None
         self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 
