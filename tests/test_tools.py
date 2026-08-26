@@ -355,6 +355,48 @@ class TestWaybackMachineTool(_ScratchpadTestCase):
         self.assertIn("[WaybackMachine error:", result)
 
 
+class TestHttpRequestTool(_ScratchpadTestCase):
+    """swarm/tools/http_request.py — HttpRequest."""
+
+    def test_no_url_returns_error(self):
+        result = self.reg.execute("http_request", {})
+        self.assertEqual(result, "Error: no URL provided")
+
+    def test_non_http_url_returns_error(self):
+        result = self.reg.execute("http_request", {"url": "ftp://example.com"})
+        self.assertIn("must start with http", result)
+
+    def test_unsupported_method_returns_error(self):
+        result = self.reg.execute("http_request", {"url": "https://example.com", "method": "TRACE"})
+        self.assertIn("unsupported method", result)
+
+    def test_get_returns_body(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b'{"ok": true}'
+            result = self.reg.execute("http_request", {"url": "https://api.example.com/data"})
+        self.assertIn('"ok": true', result)
+
+    def test_truncates_large_body(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"x" * 10000
+            result = self.reg.execute("http_request", {"url": "https://api.example.com/big"})
+        self.assertIn("truncated", result)
+
+    def test_logs_finding(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"ok"
+            self.reg.execute("http_request", {"url": "https://api.example.com"}, worker_name="Romy")
+        findings = self.sp.get_all_findings()
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0][0], "Romy")
+        self.assertEqual(len(self.sp.get_all_sources()), 0)  # findings only, no sources
+
+    def test_http_error_returns_error_string(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+            result = self.reg.execute("http_request", {"url": "https://api.example.com"})
+        self.assertIn("[HttpRequest error:", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 

@@ -16,6 +16,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `arxiv_search` | `arxiv_search.py` | Search arXiv for academic papers (Atom API, no key) | sources + findings | yes |
 | `github_search` | `github_search.py` | Search GitHub repos/issues/code (`GITHUB_TOKEN` optional) | sources + findings | yes |
 | `wayback_machine` | `wayback_machine.py` | Find archived snapshots of a URL (Wayback Machine) | sources + findings | yes |
+| `http_request` | `http_request.py` | Generic REST API client (GET/POST/PUT/DELETE) | findings | yes |
 
 ## Optional-extras tools
 
