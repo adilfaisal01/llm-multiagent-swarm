@@ -35,7 +35,7 @@ def load_swarm_config(path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
-def get_defaults(config: dict = None) -> dict:
+def get_defaults(config: dict | None = None) -> dict:
     """Build default config dict from config file or hardcoded defaults."""
     if config is None:
         config = {}
@@ -88,6 +88,20 @@ def get_defaults(config: dict = None) -> dict:
         "nemotron-3-nano:30b-cloud",
     ]
 
+    credible_domains = tuple(config.get("credible_domains", [])) or (
+        ".gov", ".edu", ".mil",
+    )
+
+    retry = config.get("retry", {}) or {
+        "max_attempts": 3,
+        "base_delay": 0.5,
+        "max_delay": 4.0,
+    }
+
+    cache_ttl = int(config.get("cache_ttl", 86400))
+
+    model_costs = config.get("model_costs", {}) or {}
+
     return {
         "worker_models": worker_models,
         "model_list": list(worker_models.keys()),
@@ -95,4 +109,8 @@ def get_defaults(config: dict = None) -> dict:
         "team": team,
         "angles": angles,
         "fallback_models": fallback_models,
+        "credible_domains": credible_domains,
+        "retry": retry,
+        "cache_ttl": cache_ttl,
+        "model_costs": model_costs,
     }
