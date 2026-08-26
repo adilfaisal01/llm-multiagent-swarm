@@ -118,7 +118,8 @@ def call_llm(
     cost: RunCost | None = None,
     model_rates: dict | None = None,
     stream_cb=None,
-) -> str:
+    return_message: bool = False,
+) -> str | dict:
     """Call the Ollama chat API with retry/backoff and optional streaming.
 
     Args:
@@ -131,9 +132,13 @@ def call_llm(
         cost: Optional RunCost accumulator. Populated with token usage.
         model_rates: Optional {input_per_1k, output_per_1k} for cost estimation.
         retry_cfg: Optional {max_attempts, base_delay, max_delay}.
+        return_message: If True, return the full Ollama ``message`` dict
+            (including ``tool_calls``) instead of just the text content.
+            On failure still returns the ``[LLM error: ...]`` string.
 
     Returns:
-        The model's text content (empty string on unrecoverable failure).
+        The model's text content (empty string on unrecoverable failure),
+        or the full message dict when ``return_message`` is True.
     """
     policy = _retry_policy(retry_cfg)
     payload = {
@@ -162,6 +167,8 @@ def call_llm(
                     text = _read_stream(resp, stream_cb, purpose)
                 else:
                     result = json.loads(resp.read())
+                    if return_message:
+                        return result.get("message", {})
                     text = result.get("message", {}).get("content", "") or ""
                     if cost is not None:
                         cost.add(

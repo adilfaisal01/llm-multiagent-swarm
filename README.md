@@ -246,8 +246,9 @@ CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:
 | `legal` | web_search, web_extract, wayback_machine, scratchpad_add | Laws, statutes, court cases (ships a 5-worker team) |
 | `medical` | wikipedia_search, arxiv_search, web_search, web_extract, scratchpad_add | Health, treatments, drugs (ships a 5-worker team) |
 | `finance` | web_search, web_extract, http_request, sql_query, scratchpad_add | Companies, markets, financials (ships a 5-worker team) |
+| `data-analysis` | read_file, sql_query, python_exec, regex_extract, scratchpad_add | Analyzing data files / statistics (pipeline mode, ships a 5-worker team) |
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`, `data-analysis`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
 
 ```bash
 python3 -m swarm --skill research --goal "Your research question"
@@ -257,6 +258,7 @@ python3 -m swarm --skill academic --goal "What does the literature say about [to
 python3 -m swarm --skill legal --goal "What are the rules on [legal topic]?"
 python3 -m swarm --skill medical --goal "What is the evidence for [treatment]?"
 python3 -m swarm --skill finance --goal "Analyze the financial health of [company]"
+python3 -m swarm --skill data-analysis --goal "Analyze sales.csv: average revenue per region"
 ```
 
 **Customizing a skill:** edit its `team.json` (workers/models/angles/prompts) or copy the folder to `swarm/skills/research-<topic>/`, update the `name` field in `SKILL.md`, and run with `--skill research-<topic>`. No code changes needed.
@@ -566,6 +568,7 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── legal/         # Full pack: SKILL.md + team.json
 │   │   ├── medical/       # Full pack: SKILL.md + team.json
 │   │   ├── finance/       # Full pack: SKILL.md + team.json
+│   │   ├── data-analysis/ # Full pack: SKILL.md + team.json (pipeline)
 │   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 │   ├── integrations/      # External harness adapters
 │   │   └── mcp/           # MCP server: swarm_research tool (optional extra)

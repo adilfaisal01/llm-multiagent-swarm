@@ -37,6 +37,7 @@ IMPORTANT: Choose skills that match the question:
   - Laws, statutes, court cases, legal questions? → use "legal" skill
   - Health, treatments, drugs, medical evidence? → use "medical" skill
   - Companies, markets, financials, valuation? → use "finance" skill
+  - Analyzing a data file / statistics / trends? → use "data-analysis" skill (pipeline mode)
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill

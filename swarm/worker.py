@@ -85,8 +85,9 @@ def run_worker(
             retry_cfg=retry_cfg,
             cost=cost,
             model_rates=model_rates,
+            return_message=True,
         )
-        if content.startswith("[LLM error"):
+        if isinstance(content, str) and content.startswith("[LLM error"):
             return {
                 "worker_id": task_id,
                 "name": worker_name,
@@ -98,7 +99,8 @@ def run_worker(
                 "tool_bundle": tool_bundle,
             }
 
-        msg = {"role": "assistant", "content": content, "tool_calls": []}
+        # content is the full message dict when return_message=True
+        msg = content if isinstance(content, dict) else {"role": "assistant", "content": content, "tool_calls": []}
         messages.append(msg)
         tool_calls = msg.get("tool_calls", [])
 
