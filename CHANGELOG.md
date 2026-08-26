@@ -5,6 +5,44 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-26
+
+### Added
+- add debate skill (0dc6ac0)
+- add code-review-swarm skill (f9d0d8d)
+- add historical skill (192a9d5)
+- add translate skill (51a947c)
+- add summarize skill (68591f6)
+- add data-analysis skill (pipeline) (40b3c7b)
+- add finance skill (1b5a30e)
+- add medical skill (7649d58)
+- add legal skill (dc9c88d)
+- add academic skill (bef6f0c)
+- add date_calculator tool (3610977)
+- add text_diff tool (2abaa19)
+- add regex_extract tool (1fba960)
+- add sql_query tool (d89e077)
+- add pdf_extract tool with optional pdf extra (b0fd68f)
+- add http_request tool (54a6756)
+- add wayback_machine tool (0d1aa6e)
+- add github_search tool (e6d4744)
+- add arxiv_search tool (413069c)
+- add wikipedia_search tool (0c9d840)
+- AI-based probabilistic source credibility (Bayesian) (418a82b)
+- add fact-check, code-debug, multi-hop, and comparison skills (a75a3c6)
+- MCP server, hermetic test suites, and docs (e7d94a3)
+- inline citations, streaming, retry, and result cache wiring (dc12a22)
+- source credibility scoring, shared LLM helper, and result cache (d45582f)
+- upgrade vision model to qwen3.5 and update config mappings (6bf889b)
+
+### Fixed
+- guard MCP server import in tests so the suite skips without the mcp extra (8d62f8b)
+- changelog generator picks up full history for first release (d99b3aa)
+
+### Changed
+- 0fc2048 Update LICENSE (0fc2048)
+- 144fa3d Add Apache License 2.0 (144fa3d)
+- 2e71ca4 changelog: update for v2.0.0 (2e71ca4)
 ## [2.0.0] - 2026-08-07
 
 ### Added
