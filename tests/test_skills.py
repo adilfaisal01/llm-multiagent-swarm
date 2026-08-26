@@ -109,7 +109,7 @@ class TestSkillRegistry(unittest.TestCase):
         for expected in ("default", "research", "search", "vision", "code", "files",
                          "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison",
                          "academic", "legal", "medical", "finance", "data-analysis", "summarize",
-                         "translate"):
+                         "translate", "historical"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -292,6 +292,20 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIn("web_search", names)
         self.assertIn("scratchpad_add", names)
         team = sr.load_team("translate")
+        assert team is not None
+        self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
+
+    def test_historical_skill_tools_and_team(self):
+        sr = get_skill_registry()
+        skill = sr.get("historical")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        tools = sr.tools_for("historical")
+        names = [t.name for t in tools]
+        self.assertIn("wayback_machine", names)
+        self.assertIn("wikipedia_search", names)
+        self.assertIn("web_search", names)
+        team = sr.load_team("historical")
         assert team is not None
         self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 

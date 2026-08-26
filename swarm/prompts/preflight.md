@@ -40,6 +40,7 @@ IMPORTANT: Choose skills that match the question:
   - Analyzing a data file / statistics / trends? → use "data-analysis" skill (pipeline mode)
   - Summarizing a document, PDF, or URL? → use "summarize" skill
   - Translating or checking a translation? → use "translate" skill
+  - History, timelines, how things changed over time? → use "historical" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill
