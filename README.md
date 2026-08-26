@@ -151,7 +151,25 @@ The scratchpad is a write-only RAM SQLite database that workers use to log raw f
 
 Schema:
 - `findings(worker, source_url, finding, category, confidence, timestamp)`
-- `sources(worker, url, title, snippet, timestamp)`
+- `sources(worker, url, url_normalized, domain, title, snippet, credibility, corroboration, first_seen, timestamp)`
+
+### Source dedup + credibility scoring
+
+Sources are **deduplicated** (URLs normalized: fragment stripped, tracking
+params removed, host lowercased) and **scored** on a 0–1 credibility scale
+combining domain authority (`.gov`/`.edu`/`.mil` boosted), recency, and
+corroboration (how many workers independently hit the same URL). The
+orchestrator ranks sources by credibility and feeds the top 20 to synthesis.
+
+### Inline citations
+
+Synthesis now produces **inline `[N]` citations**: the model is given a
+numbered, credibility-ranked source list and asked to cite claims with `[N]`
+markers. A post-processor validates the markers, drops any that don't resolve
+to a real source, and appends a numbered `## Sources` section. If the model
+emits no markers, the prose is kept as-is and sources are still listed — output
+is never worse than before. The result dict gains `citations`,
+`sources_used`, and `sources_total` keys.
 
 ## Modular Tool System
 
@@ -250,6 +268,34 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 | `GOOGLE_CX` | `""` | Google Custom Search CX ID (only for `google` backend) |
 | `SEARCH_TIMEOUT` | `15` | Timeout for search/extract calls in seconds |
 | `SWARM_CONFIG` | `swarm_config.json` | Path to JSON config file |
+| `SWARM_CACHE` | `1` | Set to `0` to disable the search/extract result cache |
+| `SWARM_CACHE_DIR` | `~/.cache/swarm` | Directory for the SQLite result cache |
+| `SWARM_CACHE_TTL` | `86400` | Cache TTL in seconds |
+| `SWARM_CACHE_MAX_ROWS` | `10000` | Max cached rows before the oldest are swept |
+
+### Streaming, retry, cache, and cost
+
+- **Streaming**: `run_swarm()` accepts a `stream_callback(chunk, phase)` hook
+  (`phase` is `"preflight"` or `"synthesis"`). When provided, preflight and
+  synthesis tokens stream through it. Worker turns stay non-streaming.
+- **Retry/backoff**: all Ollama calls go through `swarm/llm.py` with up to 3
+  attempts, exponential backoff + jitter, no retry on 4xx (except 429, which
+  honors `Retry-After`).
+- **Result cache**: `web_search` and `web_extract` results are cached in
+  SQLite keyed on `backend|query`, transparent to workers (a cache hit still
+  logs to the scratchpad).
+- **Cost accounting**: the result dict gains a `cost` key
+  (`prompt_tokens`, `completion_tokens`, `total_tokens`, `seconds`, `calls`,
+  `estimated_cost_usd`). Cost rates are opt-in via the `model_costs` config
+  field — until populated, `estimated_cost_usd` stays 0.
+
+### MCP server
+
+The swarm ships an optional **Model Context Protocol** server
+(`swarm/integrations/mcp/`) exposing `swarm_research` as a single tool, so
+Claude Desktop, Cursor, opencode, or any MCP client can run a full research
+swarm. Install with `pip install -e ".[mcp]"`, run with `swarm-mcp` (or
+`python3 -m swarm.integrations.mcp`). Full guide: `docs/MCP.md`.
 
 ### Search backends
 
@@ -459,6 +505,8 @@ Run with `python3 -m swarm --tui`:
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
 │   ├── synthesis.py       # Orchestrator synthesis (boss reads the room)
+│   ├── llm.py             # Shared Ollama helper: retry/backoff, streaming, cost
+│   ├── cache.py           # SQLite search/extract result cache
 │   ├── config.py          # Config loader + defaults
 │   ├── complexity.py      # Model-based complexity estimation
 │   ├── output.py          # Output formatting + markdown saving
@@ -472,7 +520,8 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── code/SKILL.md
 │   │   ├── files/SKILL.md
 │   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
-│   ├── integrations/      # External harness adapters (Hermes plugin, future)
+│   ├── integrations/      # External harness adapters
+│   │   └── mcp/           # MCP server: swarm_research tool (optional extra)
 │   ├── tools/             # Modular tool registry
 │   │   ├── __init__.py    # Registry: get_registry(), reset_registry()
 │   │   ├── base.py        # BaseTool abstract class

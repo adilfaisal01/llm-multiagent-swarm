@@ -21,6 +21,8 @@ swarm/
 ├── scratchpad.py     # Write-only RAM SQLite for raw findings
 ├── search.py         # Search backends: SearXNG, DuckDuckGo, Google
 ├── synthesis.py      # Orchestrator synthesis (boss reads the room)
+├── llm.py            # Shared Ollama helper: retry/backoff, streaming, cost
+├── cache.py          # SQLite search/extract result cache
 ├── config.py         # Config loader from JSON file
 ├── complexity.py     # Model-based complexity estimation (1-5)
 ├── output.py         # Output formatting + markdown file saving
@@ -34,7 +36,8 @@ swarm/
 │   ├── code/SKILL.md
 │   ├── files/SKILL.md
 │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
-├── integrations/     # External harness adapters (Hermes plugin, future)
+├── integrations/     # External harness adapters
+│   └── mcp/          # MCP server: swarm_research tool (optional mcp extra)
 ├── prompts/          # External markdown prompt templates
 │   ├── __init__.py   # load_prompt() and render_prompt()
 │   ├── preflight.md  # Preflight JSON-generation prompt
@@ -126,6 +129,19 @@ This solved the "essay-writing" problem — workers actually use their tools now
 - Workers can also call `scratchpad_add()` manually
 - Orchestrator reads after all workers finish
 - DB is `:memory:` with `check_same_thread=False` and `isolation_level=None`
+- Sources are **deduplicated** (URLs normalized: fragment stripped, tracking params removed, host lowercased) and **credibility-scored** (domain authority + recency + corroboration). `score_sources()` runs before the orchestrator reads; `top_sources()` feeds synthesis.
+
+### Inline citations
+- Synthesis is given a numbered, credibility-ranked source list and asked to cite claims with `[N]` markers
+- A post-processor validates markers, drops hallucinated numbers, and appends a `## Sources` section
+- Graceful fallback: if the model emits no markers, prose is kept as-is and sources are still listed
+- Result dict gains `citations`, `sources_used`, `sources_total` keys
+
+### Streaming, retry, cache, cost
+- `run_swarm()` accepts `stream_callback(chunk, phase)` — preflight + synthesis stream tokens (`phase` in `{"preflight", "synthesis"}`); workers stay non-streaming
+- All Ollama calls go through `swarm/llm.py` (`call_llm`): up to 3 attempts, exp backoff + jitter, no retry on 4xx (except 429 honoring `Retry-After`), `RunCost` token/cost accounting
+- `web_search`/`web_extract` results cached in SQLite (`swarm/cache.py`, keyed on `backend|query`, 24h TTL, `SWARM_CACHE=0` disables). Cache hits still log to the scratchpad — transparent to workers
+- Result dict gains a `cost` key; `estimated_cost_usd` is 0 until `model_costs` is populated in config
 
 ### Complexity estimation
 - Uses DeepSeek V4 Flash to read the query and rate it 1-5
@@ -298,13 +314,14 @@ The mode changes:
 ### Future Ideas
 - **MMLU benchmark (no tools)**: Strip the swarm of all tools (no search, no code exec, no vision) and run on MMLU. Tests whether multi-agent debate + synthesis beats single-model baselines on pure reasoning alone. Key question: does the orchestrate → synthesize pipeline add value beyond asking one good model?
 - **BrowserComp benchmark**: Run the swarm on BrowserComp (web interaction tasks) using browser_navigate/click/type tools. Tests the swarm's ability to coordinate multi-step browser workflows across workers. Pipeline mode especially relevant here — one worker researches, another fills forms, a third verifies.
-- **Hermes plugin (Phase 2)**: Expose the swarm as a `swarm_research` tool in Hermes's tool registry via a subprocess wrapper in `swarm/integrations/hermes/`. Hermes agents call it like any other tool.
-- **MCP server (Phase 3)**: Expose the swarm over Model Context Protocol so any MCP client (Claude Desktop, Cursor, opencode, Hermes) can use it. The `run_swarm()` API is already tool-shaped (goal in, dict out).
+- **Hermes plugin (Phase 2)**: Expose the swarm as a `swarm_research` tool in Hermes's tool registry via a subprocess wrapper in `swarm/integrations/hermes/`. Hermes agents call it like any other tool. (The MCP server in `swarm/integrations/mcp/` is the reference implementation of the same idea.)
 
 ## Common Pitfalls
 
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers
+- **Result cache concurrency**: the `Cache` in `swarm/cache.py` guards all SQLite access with a `threading.Lock` — do not remove it, concurrent workers will corrupt the connection
 - **Persistent TUI dependency**: `textual>=0.70.0` is declared in `pyproject.toml`; install with `pip install -e .` or just `pip install textual`
+- **MCP dependency**: the `mcp` SDK is an optional extra (`pip install -e ".[mcp]"`). `swarm/integrations/mcp/` raises a clear `ImportError` if it's missing — the library core stays stdlib-only
 - **TUI output**: Markdown auto-saved to `swarm_outputs/` on every run; live sources shown in side panel
 - **JSON output**: Goes to stdout (not stderr) so piping works: `python3 -m swarm --goal "..." --json | python3 -c "import json,sys; ..."`
 - **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`)

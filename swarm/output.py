@@ -52,7 +52,7 @@ def print_summary(result: dict, *, file=None):
 OUTPUT_DIR = Path("swarm_outputs")
 
 
-def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
+def save_markdown(result: dict, goal: str, filepath: str | Path | None = None) -> str:
     """Save full research output to a markdown file.
 
     Args:
@@ -134,7 +134,7 @@ def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
                 f.write(f"{c['n']}. {c['url']} — {c.get('domain', '')} ({stars})\n")
             f.write("\n")
 
-    return filepath
+    return str(filepath)
 
 
 def format_json(result: dict) -> str:

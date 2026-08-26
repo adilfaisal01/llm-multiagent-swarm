@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -54,6 +55,7 @@ class Cache:
     def __init__(self, path: Path | str | None = None, max_rows: int = _MAX_ROWS):
         self._path = Path(path) if path else (cache_dir() / "cache.db")
         self._max_rows = max_rows
+        self._lock = threading.Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False, isolation_level=None)
         self._conn.execute("""
@@ -67,24 +69,26 @@ class Cache:
 
     def get(self, key: str) -> str | None:
         """Return the cached value if present and unexpired, else None."""
-        row = self._conn.execute(
-            "SELECT value, created_at, ttl FROM cache WHERE key = ?", (key,)
-        ).fetchone()
-        if not row:
-            return None
-        value, created_at, ttl = row
-        if time.time() - created_at > ttl:
-            self._conn.execute("DELETE FROM cache WHERE key = ?", (key,))
-            return None
-        return value
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value, created_at, ttl FROM cache WHERE key = ?", (key,)
+            ).fetchone()
+            if not row:
+                return None
+            value, created_at, ttl = row
+            if time.time() - created_at > ttl:
+                self._conn.execute("DELETE FROM cache WHERE key = ?", (key,))
+                return None
+            return value
 
     def set(self, key: str, value: str, ttl: int = _DEFAULT_TTL):
         """Store a value with a TTL in seconds."""
-        self._conn.execute(
-            "INSERT OR REPLACE INTO cache (key, value, created_at, ttl) VALUES (?, ?, ?, ?)",
-            (key, value, time.time(), ttl),
-        )
-        self._sweep()
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO cache (key, value, created_at, ttl) VALUES (?, ?, ?, ?)",
+                (key, value, time.time(), ttl),
+            )
+            self._sweep()
 
     def _sweep(self):
         """Delete expired rows and cap total rows at max_rows."""
@@ -99,8 +103,9 @@ class Cache:
 
     def clear(self):
         """Delete all cached entries."""
-        self._conn.execute("DELETE FROM cache")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM cache")
+            self._conn.commit()
 
     def close(self):
         """Close the underlying SQLite connection."""

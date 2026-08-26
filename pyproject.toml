@@ -29,6 +29,7 @@ dependencies = [
 
 [project.scripts]
 swarm = "swarm.__main__:main"
+swarm-mcp = "swarm.integrations.mcp:main"
 
 [project.optional-dependencies]
 dev = [

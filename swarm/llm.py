@@ -78,10 +78,10 @@ def _retry_policy(retry_cfg: dict | None) -> dict:
 
 def _should_retry(exc: Exception) -> bool:
     """True if the exception is transient (network / 5xx / timeout)."""
-    if isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)):
-        return True
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code >= 500 or exc.code == 429
+    if isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)):
+        return True
     return False
 
 

@@ -40,3 +40,28 @@ jobs:
 
       - name: Run pytest suite
         run: pytest tests/ -v
+
+  mcp-extra:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with mcp extra
+        run: pip install -e ".[dev,mcp]"
+
+      - name: Check MCP server imports
+        run: |
+          python3 -c "from swarm.integrations.mcp import run_mcp_server; print('mcp import ok')"
+          python3 -c "from swarm.integrations.mcp.server import main; print('mcp server ok')"
+
+      - name: Run MCP tests
+        run: python3 -m unittest tests.test_mcp -v

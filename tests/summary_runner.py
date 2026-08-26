@@ -134,10 +134,16 @@ def main() -> int:
 
     modules = args.modules or [
         "tests.test_argparse",
+        "tests.test_cache",
         "tests.test_chaos",
         "tests.test_e2e",
+        "tests.test_llm",
+        "tests.test_mcp",
         "tests.test_prompts",
+        "tests.test_scratchpad_citations",
         "tests.test_skills",
+        "tests.test_streaming",
+        "tests.test_synthesis_citations",
         "tests.test_tools",
         "tests.test_tui",
     ]

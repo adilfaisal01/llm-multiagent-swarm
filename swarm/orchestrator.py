@@ -172,8 +172,11 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         fallback_models = []
     if progress_callback is None:
         progress_callback = lambda *_: None
+    # Keep stream_callback as None when not provided so synthesis/preflight
+    # use the non-streaming path (streaming is only enabled when a consumer
+    # actually wants the tokens).
     if stream_callback is None:
-        stream_callback = lambda *_: None
+        stream_callback = None
 
     cost = RunCost()
 
