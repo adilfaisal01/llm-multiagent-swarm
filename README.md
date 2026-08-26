@@ -197,6 +197,7 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `read_file` | Read .txt, .csv, .json, .xml, .xlsx files | files, all |
 | `python_exec` | Execute Python code for calculations/processing | code, all |
 | `wikipedia_search` | Search Wikipedia for encyclopedic facts | search, default, all |
+| `arxiv_search` | Search arXiv for academic papers | research, all |
 
 The full catalog (including new tools added incrementally) lives in
 [`docs/TOOLS.md`](docs/TOOLS.md).
@@ -557,7 +558,8 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── vision.py      # Read images via Gemma4
 │   │   ├── python_exec.py # Execute Python code
 │   │   ├── file_reader.py # Read .txt/.csv/.json/.xlsx
-│   │   └── wikipedia_search.py # Search Wikipedia for encyclopedic facts
+│   │   ├── wikipedia_search.py # Search Wikipedia for encyclopedic facts
+│   │   └── arxiv_search.py # Search arXiv for academic papers
 │   ├── prompts/           # External markdown prompt templates
 │   │   ├── __init__.py    # load_prompt() and render_prompt()
 │   │   ├── preflight.md   # Preflight JSON-generation prompt

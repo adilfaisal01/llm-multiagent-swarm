@@ -66,7 +66,8 @@ swarm/
     ├── vision.py     # Read images via Gemma4
     ├── python_exec.py# Execute Python code
     ├── file_reader.py# Read .txt/.csv/.json/.xlsx
-    └── wikipedia_search.py # Search Wikipedia for encyclopedic facts
+    ├── wikipedia_search.py # Search Wikipedia for encyclopedic facts
+    └── arxiv_search.py # Search arXiv for academic papers
 ```
 
 ## Key Design Decisions

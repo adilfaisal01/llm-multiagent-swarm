@@ -184,6 +184,61 @@ class TestWikipediaSearchTool(_ScratchpadTestCase):
         self.assertIn("[WikipediaSearch error:", result)
 
 
+class TestArxivSearchTool(_ScratchpadTestCase):
+    """swarm/tools/arxiv_search.py — ArxivSearch."""
+
+    ATOM = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<feed xmlns="http://www.w3.org/2005/Atom">'
+        "<entry><id>http://arxiv.org/abs/1706.03762</id>"
+        "<title>Attention Is All You Need</title>"
+        "<summary>  The dominant sequence transduction models are based on complex "
+        "recurrent networks.  </summary>"
+        "<published>2017-06-12T00:00:00Z</published></entry>"
+        "</feed>"
+    )
+
+    def test_no_query_returns_error(self):
+        result = self.reg.execute("arxiv_search", {})
+        self.assertEqual(result, "Error: no query provided")
+
+    def test_returns_papers(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = self.ATOM.encode()
+            result = self.reg.execute("arxiv_search", {"query": "attention is all you need"})
+        self.assertIn("Attention Is All You Need", result)
+        self.assertIn("2017-06-12", result)
+        self.assertIn("http://arxiv.org/abs/1706.03762", result)
+        self.assertIn("sequence transduction", result)  # whitespace collapsed
+
+    def test_logs_sources_to_scratchpad(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = self.ATOM.encode()
+            self.reg.execute("arxiv_search", {"query": "transformers"}, worker_name="Zara")
+        sources = self.sp.get_all_sources()
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0][1], "http://arxiv.org/abs/1706.03762")
+        self.assertEqual(len(self.sp.get_all_findings()), 1)
+
+    def test_no_results_message(self):
+        empty_feed = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = empty_feed.encode()
+            result = self.reg.execute("arxiv_search", {"query": "zzzznope"})
+        self.assertIn("No arXiv papers", result)
+
+    def test_http_error_returns_error_string(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+            result = self.reg.execute("arxiv_search", {"query": "transformers"})
+        self.assertIn("[ArxivSearch error:", result)
+
+    def test_malformed_xml_returns_error(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = b"not xml"
+            result = self.reg.execute("arxiv_search", {"query": "transformers"})
+        self.assertIn("[ArxivSearch error:", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
