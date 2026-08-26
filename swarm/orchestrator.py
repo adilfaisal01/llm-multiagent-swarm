@@ -21,6 +21,7 @@ from .synthesis import synthesize as run_synthesis
 from .preflight import analyze_question, build_worker_prompt
 from .skills import get_skill_registry
 from .llm import RunCost
+from .credibility import ai_score_sources
 
 
 def _get_tool_names_for_skill(skill_name: str) -> list[str]:
@@ -148,7 +149,8 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
                 stream_callback=None,
                 credible_domains: tuple = (".gov", ".edu", ".mil"),
                 retry_cfg: dict | None = None,
-                model_costs: dict | None = None) -> dict:
+                model_costs: dict | None = None,
+                ai_credibility: bool = True) -> dict:
     """Run the swarm and return results with scratchpad data.
 
     Args:
@@ -163,6 +165,8 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         credible_domains: Domain suffixes that boost source credibility.
         retry_cfg: Optional {max_attempts, base_delay, max_delay} for LLM calls.
         model_costs: Optional {model_tag: {input_per_1k, output_per_1k}}.
+        ai_credibility: If True, an LLM judge refines source credibility
+            scores (Bayesian posterior of heuristic prior + LLM estimate).
     """
     if team is None:
         team = []
@@ -282,6 +286,33 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
     top_sources = sp.top_sources(limit=20, credible_domains=credible_domains)
     for src in top_sources:
         src["findings"] = [f[2] for f in sp.findings_for_source(src["url"])]
+
+    # AI-based probabilistic credibility: an LLM judge refines the heuristic
+    # prior into a Bayesian posterior. Falls back to the prior on failure.
+    credibility_meta = {}
+    if ai_credibility and top_sources:
+        judge_model = synthesis_model or default_worker or "gpt-oss:120b-cloud"
+        print(f"  🧠 AI credibility judge scoring {len(top_sources)} sources "
+              f"(model: {judge_model.split(':')[0]})...", file=out)
+        posteriors = ai_score_sources(
+            top_sources,
+            model=judge_model,
+            ollama_base=ollama_base,
+            retry_cfg=retry_cfg,
+            cost=cost,
+            model_rates=model_costs,
+        )
+        for src in top_sources:
+            meta = posteriors.get(src["url"], {})
+            src["credibility"] = meta.get("posterior", src["credibility"])
+            src["credibility_prior"] = meta.get("prior")
+            src["llm_probability"] = meta.get("llm_probability")
+            src["llm_confidence"] = meta.get("confidence")
+            src["credibility_reason"] = meta.get("reason", "")
+            credibility_meta[src["url"]] = meta
+        # Re-rank by posterior
+        top_sources.sort(key=lambda s: s["credibility"], reverse=True)
+
     sp.close()
     set_scratchpad(None)
 
@@ -298,6 +329,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
             "sources": scratch_sources,
             "top_sources": top_sources,
         },
+        "credibility": credibility_meta,
     }
 
     # ─── Orchestrator synthesis: the boss reads the room ───

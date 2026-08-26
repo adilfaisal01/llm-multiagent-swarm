@@ -22,6 +22,7 @@ swarm/
 ├── search.py         # Search backends: SearXNG, DuckDuckGo, Google
 ├── synthesis.py      # Orchestrator synthesis (boss reads the room)
 ├── llm.py            # Shared Ollama helper: retry/backoff, streaming, cost
+├── credibility.py    # AI-based probabilistic source credibility (Bayesian)
 ├── cache.py          # SQLite search/extract result cache
 ├── config.py         # Config loader from JSON file
 ├── complexity.py     # Model-based complexity estimation (1-5)
@@ -138,6 +139,7 @@ This solved the "essay-writing" problem — workers actually use their tools now
 - Orchestrator reads after all workers finish
 - DB is `:memory:` with `check_same_thread=False` and `isolation_level=None`
 - Sources are **deduplicated** (URLs normalized: fragment stripped, tracking params removed, host lowercased) and **credibility-scored** (domain authority + recency + corroboration). `score_sources()` runs before the orchestrator reads; `top_sources()` feeds synthesis.
+- **AI-based probabilistic scoring** (`swarm/credibility.py`): an LLM judge refines the heuristic prior into a Bayesian posterior via confidence-weighted log-odds pooling. Falls back to the prior on judge failure. `run_swarm(..., ai_credibility=False)` disables it.
 
 ### Inline citations
 - Synthesis is given a numbered, credibility-ranked source list and asked to cite claims with `[N]` markers

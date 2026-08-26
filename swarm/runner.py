@@ -30,6 +30,7 @@ def run_swarm(
     synthesize: bool = True,
     progress_callback=None,
     stream_callback=None,
+    ai_credibility: bool = True,
 ) -> dict:
     """Run the swarm and return results.
 
@@ -51,6 +52,8 @@ def run_swarm(
         stream_callback: Optional callable(chunk, phase) receiving streamed
             tokens from preflight and synthesis (phase in {"preflight",
             "synthesis"}).
+        ai_credibility: If True, an LLM judge refines source credibility
+            scores into Bayesian posteriors (default True).
 
     Returns:
         Dict with keys: goal, num_workers, models, wall_time_s, workers, scratchpad.
@@ -143,6 +146,7 @@ def run_swarm(
         credible_domains=defaults["credible_domains"],
         retry_cfg=defaults["retry"],
         model_costs=defaults["model_costs"],
+        ai_credibility=ai_credibility,
     )
 
     return result

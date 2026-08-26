@@ -161,6 +161,17 @@ combining domain authority (`.gov`/`.edu`/`.mil` boosted), recency, and
 corroboration (how many workers independently hit the same URL). The
 orchestrator ranks sources by credibility and feeds the top 20 to synthesis.
 
+### AI-based probabilistic credibility
+
+Credibility is refined by an **LLM judge** into a Bayesian posterior. The
+heuristic score becomes a **prior**; the judge estimates each source's
+credibility probability + its own confidence; confidence-weighted **log-odds
+pooling** combines them into a **posterior**. If the judge call fails, the
+prior is kept — output is never worse than the heuristic baseline. Each
+`top_sources` entry gains `credibility_prior`, `llm_probability`,
+`llm_confidence`, and `credibility_reason`; the result dict gains a
+`credibility` map. Disable with `run_swarm(..., ai_credibility=False)`.
+
 ### Inline citations
 
 Synthesis now produces **inline `[N]` citations**: the model is given a
@@ -511,6 +522,7 @@ Run with `python3 -m swarm --tui`:
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
 │   ├── synthesis.py       # Orchestrator synthesis (boss reads the room)
 │   ├── llm.py             # Shared Ollama helper: retry/backoff, streaming, cost
+│   ├── credibility.py     # AI-based probabilistic source credibility (Bayesian)
 │   ├── cache.py           # SQLite search/extract result cache
 │   ├── config.py          # Config loader + defaults
 │   ├── complexity.py      # Model-based complexity estimation

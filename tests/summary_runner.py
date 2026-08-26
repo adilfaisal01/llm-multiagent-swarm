@@ -136,6 +136,7 @@ def main() -> int:
         "tests.test_argparse",
         "tests.test_cache",
         "tests.test_chaos",
+        "tests.test_credibility",
         "tests.test_e2e",
         "tests.test_llm",
         "tests.test_mcp",
