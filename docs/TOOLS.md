@@ -20,6 +20,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `pdf_extract` | `pdf_extract.py` | Extract text from PDF files (requires `pdf` extra) | findings | no |
 | `sql_query` | `sql_query.py` | Run read-only SELECT queries on a local SQLite DB | findings | no |
 | `regex_extract` | `regex_extract.py` | Extract structured data from text with a regex | none | no |
+| `text_diff` | `text_diff.py` | Unified diff between two text blobs | none | no |
 
 ## Optional-extras tools
 

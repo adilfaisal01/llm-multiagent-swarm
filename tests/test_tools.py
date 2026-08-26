@@ -581,6 +581,45 @@ class TestRegexExtractTool(unittest.TestCase):
         self.assertIn("invalid regex", result)
 
 
+class TestTextDiffTool(unittest.TestCase):
+    """swarm/tools/text_diff.py — TextDiff."""
+
+    def setUp(self):
+        self.reg = _fresh_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def test_no_original_returns_error(self):
+        result = self.reg.execute("text_diff", {"changed": "x"})
+        self.assertEqual(result, "Error: no original text provided")
+
+    def test_no_changed_returns_error(self):
+        result = self.reg.execute("text_diff", {"original": "x"})
+        self.assertEqual(result, "Error: no changed text provided")
+
+    def test_identical_texts(self):
+        result = self.reg.execute("text_diff", {"original": "same", "changed": "same"})
+        self.assertIn("identical", result)
+
+    def test_shows_added_and_removed_lines(self):
+        result = self.reg.execute(
+            "text_diff",
+            {"original": "apple\nbanana", "changed": "apple\ncherry"},
+        )
+        self.assertIn("-banana", result)
+        self.assertIn("+cherry", result)
+
+    def test_honors_labels(self):
+        result = self.reg.execute(
+            "text_diff",
+            {"original": "one", "changed": "two", "label1": "claim", "label2": "source"},
+        )
+        self.assertIn("--- claim", result)
+        self.assertIn("+++ source", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 

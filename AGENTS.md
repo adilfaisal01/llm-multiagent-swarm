@@ -73,7 +73,8 @@ swarm/
     ├── http_request.py # Generic REST API client
     ├── pdf_extract.py # Read PDFs (optional pdf extra)
     ├── sql_query.py # Run read-only SQL against a local DB
-    └── regex_extract.py # Extract structured data from text
+    ├── regex_extract.py # Extract structured data from text
+    └── text_diff.py # Unified diff between two texts
 ```
 
 ## Key Design Decisions
