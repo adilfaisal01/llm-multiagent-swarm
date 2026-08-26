@@ -27,3 +27,4 @@ recommended model, optional team, and mode. Full-pack skills also ship a
 | `translate` | web_search, web_extract, scratchpad_add | parallel | yes (5) | Translating or checking a translation |
 | `historical` | wayback_machine, web_search, web_extract, wikipedia_search, scratchpad_add | parallel | yes (5) | History, timelines, change over time |
 | `code-review-swarm` | read_file, python_exec, web_search, scratchpad_add | parallel | yes (5) | Reviewing / critiquing code |
+| `debate` | web_search, web_extract, scratchpad_add | parallel | yes (5) | Subjective / contested / should-we questions |

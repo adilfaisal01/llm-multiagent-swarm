@@ -251,8 +251,9 @@ CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:
 | `translate` | web_search, web_extract, scratchpad_add | Translating / checking translations (ships a 5-worker team) |
 | `historical` | wayback_machine, web_search, web_extract, wikipedia_search, scratchpad_add | History / timelines / change over time (ships a 5-worker team) |
 | `code-review-swarm` | read_file, python_exec, web_search, scratchpad_add | Reviewing / critiquing code (ships a 5-worker team) |
+| `debate` | web_search, web_extract, scratchpad_add | Subjective / contested questions, pro-con analysis (ships a 5-worker team) |
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`, `data-analysis`, `summarize`, `translate`, `historical`, `code-review-swarm`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`, `medical`, `finance`, `data-analysis`, `summarize`, `translate`, `historical`, `code-review-swarm`, `debate`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
 
 ```bash
 python3 -m swarm --skill research --goal "Your research question"
@@ -267,6 +268,7 @@ python3 -m swarm --skill summarize --goal "Summarize the key points of /path/to/
 python3 -m swarm --skill translate --goal "Translate this to French: [text]"
 python3 -m swarm --skill historical --goal "How has [topic] changed over the last 30 years?"
 python3 -m swarm --skill code-review-swarm --goal "Review /path/to/code.py for bugs, security, and style"
+python3 -m swarm --skill debate --goal "Should remote work become the default for software companies?"
 ```
 
 **Customizing a skill:** edit its `team.json` (workers/models/angles/prompts) or copy the folder to `swarm/skills/research-<topic>/`, update the `name` field in `SKILL.md`, and run with `--skill research-<topic>`. No code changes needed.
@@ -581,6 +583,7 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── translate/     # Full pack: SKILL.md + team.json
 │   │   ├── historical/    # Full pack: SKILL.md + team.json
 │   │   ├── code-review-swarm/  # Full pack: SKILL.md + team.json
+│   │   ├── debate/       # Full pack: SKILL.md + team.json
 │   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 │   ├── integrations/      # External harness adapters
 │   │   └── mcp/           # MCP server: swarm_research tool (optional extra)

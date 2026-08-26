@@ -42,6 +42,7 @@ IMPORTANT: Choose skills that match the question:
   - Translating or checking a translation? → use "translate" skill
   - History, timelines, how things changed over time? → use "historical" skill
   - Reviewing / critiquing code? → use "code-review-swarm" skill
+  - Subjective / contested / should-we questions? → use "debate" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill
