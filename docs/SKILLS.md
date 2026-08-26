@@ -26,3 +26,4 @@ recommended model, optional team, and mode. Full-pack skills also ship a
 | `summarize` | read_file, pdf_extract, web_extract, python_exec, scratchpad_add | parallel | yes (5) | Summarizing a document, PDF, or URL |
 | `translate` | web_search, web_extract, scratchpad_add | parallel | yes (5) | Translating or checking a translation |
 | `historical` | wayback_machine, web_search, web_extract, wikipedia_search, scratchpad_add | parallel | yes (5) | History, timelines, change over time |
+| `code-review-swarm` | read_file, python_exec, web_search, scratchpad_add | parallel | yes (5) | Reviewing / critiquing code |
