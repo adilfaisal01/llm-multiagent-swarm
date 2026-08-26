@@ -15,6 +15,7 @@ import csv
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -468,6 +469,67 @@ class TestPdfExtractTool(unittest.TestCase):
         with patch.dict("sys.modules", {"pypdf": type("pypdf", (), {"PdfReader": _FakeReader})()}):
             result = self.reg.execute("pdf_extract", {"path": str(self.pdf)})
         self.assertIn("scanned/image", result)
+
+
+class TestSqlQueryTool(_ScratchpadTestCase):
+    """swarm/tools/sql_query.py — SqlQuery."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.db = self.dir / "data.db"
+        conn = sqlite3.connect(str(self.db))
+        conn.execute("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, price REAL)")
+        conn.executemany(
+            "INSERT INTO items (name, price) VALUES (?, ?)",
+            [("apple", 1.0), ("banana", 0.5), ("cherry", 2.5)],
+        )
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+        super().tearDown()
+
+    def test_no_path_returns_error(self):
+        result = self.reg.execute("sql_query", {"query": "SELECT 1"})
+        self.assertEqual(result, "Error: no path provided")
+
+    def test_missing_db_returns_error(self):
+        result = self.reg.execute("sql_query", {"path": "/nonexistent/x.db", "query": "SELECT 1"})
+        self.assertIn("database not found", result)
+
+    def test_no_query_returns_error(self):
+        result = self.reg.execute("sql_query", {"path": str(self.db)})
+        self.assertEqual(result, "Error: no query provided")
+
+    def test_select_returns_rows(self):
+        result = self.reg.execute("sql_query", {"path": str(self.db), "query": "SELECT name, price FROM items ORDER BY id"})
+        self.assertIn("apple", result)
+        self.assertIn("1.0", result)
+        self.assertIn("banana", result)
+        self.assertIn("name | price", result)
+
+    def test_write_query_rejected(self):
+        result = self.reg.execute("sql_query", {"path": str(self.db), "query": "DELETE FROM items"})
+        self.assertIn("only read-only", result)
+
+    def test_no_rows_message(self):
+        result = self.reg.execute(
+            "sql_query", {"path": str(self.db), "query": "SELECT * FROM items WHERE price > 100"}
+        )
+        self.assertIn("no rows", result)
+
+    def test_invalid_sql_returns_error(self):
+        result = self.reg.execute("sql_query", {"path": str(self.db), "query": "SELECT * FROM nope"})
+        self.assertIn("[SqlQuery error:", result)
+
+    def test_logs_finding(self):
+        self.reg.execute("sql_query", {"path": str(self.db), "query": "SELECT COUNT(*) FROM items"}, worker_name="Zara")
+        findings = self.sp.get_all_findings()
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(len(self.sp.get_all_sources()), 0)
 
 
 class TestScratchpadAddTool(_ScratchpadTestCase):

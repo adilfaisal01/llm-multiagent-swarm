@@ -71,7 +71,8 @@ swarm/
     ├── github_search.py # Search GitHub repos/issues/code
     ├── wayback_machine.py # Find archived snapshots of URLs
     ├── http_request.py # Generic REST API client
-    └── pdf_extract.py # Read PDFs (optional pdf extra)
+    ├── pdf_extract.py # Read PDFs (optional pdf extra)
+    └── sql_query.py # Run read-only SQL against a local DB
 ```
 
 ## Key Design Decisions

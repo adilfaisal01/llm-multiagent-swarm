@@ -202,6 +202,7 @@ The swarm uses a plugin-style tool registry in `swarm/tools/`. Each tool is a se
 | `wayback_machine` | Find archived snapshots of URLs | search, research, all |
 | `http_request` | Generic REST API client (weather, exchange rates, etc.) | research, code, all |
 | `pdf_extract` | Extract text from PDF files (optional `pdf` extra) | files, all |
+| `sql_query` | Run read-only SQL against a local SQLite DB | files, code, all |
 
 The full catalog (including new tools added incrementally) lives in
 [`docs/TOOLS.md`](docs/TOOLS.md).
@@ -567,7 +568,8 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── github_search.py # Search GitHub repos/issues/code
 │   │   ├── wayback_machine.py # Find archived snapshots of URLs
 │   │   ├── http_request.py # Generic REST API client
-│   │   └── pdf_extract.py # Read PDFs (optional pdf extra)
+│   │   ├── pdf_extract.py # Read PDFs (optional pdf extra)
+│   │   └── sql_query.py # Run read-only SQL against a local DB
 │   ├── prompts/           # External markdown prompt templates
 │   │   ├── __init__.py    # load_prompt() and render_prompt()
 │   │   ├── preflight.md   # Preflight JSON-generation prompt

@@ -18,6 +18,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `wayback_machine` | `wayback_machine.py` | Find archived snapshots of a URL (Wayback Machine) | sources + findings | yes |
 | `http_request` | `http_request.py` | Generic REST API client (GET/POST/PUT/DELETE) | findings | yes |
 | `pdf_extract` | `pdf_extract.py` | Extract text from PDF files (requires `pdf` extra) | findings | no |
+| `sql_query` | `sql_query.py` | Run read-only SELECT queries on a local SQLite DB | findings | no |
 
 ## Optional-extras tools
 
