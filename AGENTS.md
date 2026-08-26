@@ -65,7 +65,8 @@ swarm/
     ├── scratchpad.py # Log findings tool
     ├── vision.py     # Read images via Gemma4
     ├── python_exec.py# Execute Python code
-    └── file_reader.py# Read .txt/.csv/.json/.xlsx
+    ├── file_reader.py# Read .txt/.csv/.json/.xlsx
+    └── wikipedia_search.py # Search Wikipedia for encyclopedic facts
 ```
 
 ## Key Design Decisions

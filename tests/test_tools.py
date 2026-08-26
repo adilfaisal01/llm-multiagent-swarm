@@ -131,6 +131,59 @@ class TestWebExtractTool(_ScratchpadTestCase):
         self.assertIn("[Extract error:", result)
 
 
+class TestWikipediaSearchTool(_ScratchpadTestCase):
+    """swarm/tools/wikipedia_search.py — WikipediaSearch."""
+
+    def _fake_query(self, titles_and_snippets):
+        data = {
+            "query": {
+                "search": [
+                    {"title": t, "snippet": f'<span class="searchmatch">{s}</span>'}
+                    for t, s in titles_and_snippets
+                ]
+            }
+        }
+        return json.dumps(data).encode()
+
+    def test_no_query_returns_error(self):
+        result = self.reg.execute("wikipedia_search", {})
+        self.assertEqual(result, "Error: no query provided")
+
+    def test_returns_titles_and_cleaned_snippets(self):
+        payload = self._fake_query([("Quantum computing", "uses qubits"), ("Qubit", "basic unit")])
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload
+            result = self.reg.execute("wikipedia_search", {"query": "quantum computing"})
+        self.assertIn("Quantum computing", result)
+        self.assertIn("uses qubits", result)  # markup stripped
+        self.assertIn("https://en.wikipedia.org/wiki/Quantum_computing", result)
+        self.assertNotIn("<span", result)
+
+    def test_logs_sources_to_scratchpad(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = self._fake_query(
+                [("Paris", "capital of France")]
+            )
+            self.reg.execute("wikipedia_search", {"query": "Paris"}, worker_name="Vera")
+        sources = self.sp.get_all_sources()
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0][1], "https://en.wikipedia.org/wiki/Paris")
+        self.assertEqual(len(self.sp.get_all_findings()), 1)
+
+    def test_no_results_message(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+                json.dumps({"query": {"search": []}}).encode()
+            )
+            result = self.reg.execute("wikipedia_search", {"query": "zzzznope"})
+        self.assertIn("No Wikipedia results", result)
+
+    def test_http_error_returns_error_string(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("timeout")):
+            result = self.reg.execute("wikipedia_search", {"query": "Paris"})
+        self.assertIn("[WikipediaSearch error:", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
