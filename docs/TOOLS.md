@@ -14,6 +14,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `python_exec` | `python_exec.py` | Execute Python code for calculations/processing | no | no |
 | `wikipedia_search` | `wikipedia_search.py` | Search Wikipedia (MediaWiki API, no key) | sources + findings | yes |
 | `arxiv_search` | `arxiv_search.py` | Search arXiv for academic papers (Atom API, no key) | sources + findings | yes |
+| `github_search` | `github_search.py` | Search GitHub repos/issues/code (`GITHUB_TOKEN` optional) | sources + findings | yes |
 
 ## Optional-extras tools
 

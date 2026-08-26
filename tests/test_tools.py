@@ -239,6 +239,77 @@ class TestArxivSearchTool(_ScratchpadTestCase):
         self.assertIn("[ArxivSearch error:", result)
 
 
+class TestGithubSearchTool(_ScratchpadTestCase):
+    """swarm/tools/github_search.py — GithubSearch."""
+
+    def test_no_query_returns_error(self):
+        result = self.reg.execute("github_search", {})
+        self.assertEqual(result, "Error: no query provided")
+
+    def test_unsupported_type_returns_error(self):
+        result = self.reg.execute("github_search", {"query": "zig", "type": "wiki"})
+        self.assertIn("unsupported type", result)
+
+    def test_repositories_search(self):
+        data = {"items": [
+            {"full_name": "tensorflow/tensorflow", "description": "ML framework",
+             "stargazers_count": 180000, "html_url": "https://github.com/tensorflow/tensorflow"}
+        ]}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            result = self.reg.execute("github_search", {"query": "tensorflow"})
+        self.assertIn("tensorflow/tensorflow", result)
+        self.assertIn("ML framework", result)
+        self.assertIn("https://github.com/tensorflow/tensorflow", result)
+
+    def test_issues_search(self):
+        data = {"items": [
+            {"number": 42, "title": "Bug: crash on startup", "state": "open",
+             "repository_url": "https://api.github.com/repos/a/b",
+             "html_url": "https://github.com/a/b/issues/42"}
+        ]}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            result = self.reg.execute("github_search", {"query": "crash", "type": "issues"})
+        self.assertIn("b#42", result)
+        self.assertIn("Bug: crash on startup", result)
+
+    def test_code_search(self):
+        data = {"items": [
+            {"path": "src/main.py", "html_url": "https://github.com/a/b/blob/main/src/main.py",
+             "repository": {"full_name": "a/b"}}
+        ]}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            result = self.reg.execute("github_search", {"query": "def main", "type": "code"})
+        self.assertIn("main.py in a/b", result)
+
+    def test_logs_sources_to_scratchpad(self):
+        data = {"items": [
+            {"full_name": "a/b", "description": "d", "stargazers_count": 1,
+             "html_url": "https://github.com/a/b"}
+        ]}
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
+            self.reg.execute("github_search", {"query": "a b"}, worker_name="Cyrus")
+        sources = self.sp.get_all_sources()
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0][1], "https://github.com/a/b")
+
+    def test_no_results_message(self):
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+                json.dumps({"items": []}).encode()
+            )
+            result = self.reg.execute("github_search", {"query": "zzzznope"})
+        self.assertIn("No GitHub", result)
+
+    def test_http_error_returns_error_string(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("rate limited")):
+            result = self.reg.execute("github_search", {"query": "zig"})
+        self.assertIn("[GithubSearch error:", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
