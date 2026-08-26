@@ -5,10 +5,9 @@ Workers get tool bundles assigned by preflight based on the question.
 """
 
 from __future__ import annotations
-import json
 import time
-import urllib.request
 
+from .llm import call_llm
 from .prompts import render_prompt
 from .tools import get_registry
 
@@ -24,6 +23,9 @@ def run_worker(
     fallback_models: list | None = None,
     tool_bundle: str = "default",
     progress=None,
+    retry_cfg: dict | None = None,
+    cost=None,
+    model_rates: dict | None = None,
 ) -> dict:
     """Run a single worker agent with tool access.
 
@@ -70,36 +72,33 @@ def run_worker(
 
     search_rounds = 0
     max_rounds = 5  # more rounds to allow tool use + synthesis
+    msg: dict = {"role": "assistant", "content": "", "tool_calls": []}
     for _ in range(max_rounds):
-        payload = {
-            "model": model_name,
-            "messages": messages,
-            "stream": False,
-            "tools": ollama_tools,
-            "options": {"num_predict": 4096},
-        }
-        data = json.dumps(payload).encode()
-        req = urllib.request.Request(
-            f"{ollama_base}/api/chat",
-            data=data,
-            headers={"Content-Type": "application/json"},
+        content = call_llm(
+            model_name,
+            messages,
+            ollama_base=ollama_base,
+            tools=ollama_tools,
+            temperature=0.3,
+            max_tokens=4096,
+            purpose="worker",
+            retry_cfg=retry_cfg,
+            cost=cost,
+            model_rates=model_rates,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                result = json.loads(resp.read())
-                msg = result.get("message", {})
-        except Exception as e:
+        if content.startswith("[LLM error"):
             return {
                 "worker_id": task_id,
                 "name": worker_name,
                 "model": model_name,
                 "duration_s": round(time.time() - start, 1),
                 "search_rounds": search_rounds,
-                "response": f"[ERROR: {e}]",
+                "response": f"[ERROR: {content}]",
                 "status": "error",
                 "tool_bundle": tool_bundle,
             }
 
+        msg = {"role": "assistant", "content": content, "tool_calls": []}
         messages.append(msg)
         tool_calls = msg.get("tool_calls", [])
 
@@ -144,61 +143,49 @@ def run_worker(
 
     # Force synthesis if tool rounds exhausted and no content
     if not content and search_rounds >= max_rounds:
-        for attempt, prompt in enumerate([
+        for prompt in [
             "Synthesize your findings into a final answer now. Do not search again. Just respond with what you know.",
             "STOP SEARCHING. You have enough information. Write your final answer NOW. One paragraph. Go."
-        ]):
+        ]:
             messages.append({"role": "user", "content": prompt})
-            payload = {
-                "model": model_name,
-                "messages": messages,
-                "stream": False,
-                "options": {"num_predict": 4096},
-            }
-            data = json.dumps(payload).encode()
-            req = urllib.request.Request(
-                f"{ollama_base}/api/chat",
-                data=data,
-                headers={"Content-Type": "application/json"},
+            content = call_llm(
+                model_name,
+                messages,
+                ollama_base=ollama_base,
+                temperature=0.3,
+                max_tokens=4096,
+                purpose="worker_force",
+                retry_cfg=retry_cfg,
+                cost=cost,
+                model_rates=model_rates,
             )
-            try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
-                    result = json.loads(resp.read())
-                    msg = result.get("message", {})
-                    content = msg.get("content", "") or ""
-                if content:
-                    break
-            except Exception:
-                content = "(no response)"
+            if content and not content.startswith("[LLM error"):
+                break
+        if not content or content.startswith("[LLM error"):
+            content = "(no response)"
 
     if not content:
         for fb_model in fallback_models:
             if fb_model == model_name:
                 continue
-            try:
-                fb_payload = {
-                    "model": fb_model,
-                    "messages": [
-                        {"role": "system", "content": render_prompt("fallback_system")},
-                        {"role": "user", "content": render_prompt("fallback_user", goal=goal)}
-                    ],
-                    "stream": False,
-                    "options": {"num_predict": 1024},
-                }
-                fb_data = json.dumps(fb_payload).encode()
-                fb_req = urllib.request.Request(
-                    f"{ollama_base}/api/chat",
-                    data=fb_data,
-                    headers={"Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(fb_req, timeout=60) as resp:
-                    fb_result = json.loads(resp.read())
-                    fb_content = fb_result.get("message", {}).get("content", "") or ""
-                if fb_content:
-                    content = f"[FALLBACK: {fb_model}] {fb_content}"
-                    break
-            except Exception:
-                continue
+            fb_content = call_llm(
+                fb_model,
+                [
+                    {"role": "system", "content": render_prompt("fallback_system")},
+                    {"role": "user", "content": render_prompt("fallback_user", goal=goal)}
+                ],
+                ollama_base=ollama_base,
+                temperature=0.3,
+                max_tokens=1024,
+                timeout=60,
+                purpose="worker_fallback",
+                retry_cfg=retry_cfg,
+                cost=cost,
+                model_rates=model_rates,
+            )
+            if fb_content and not fb_content.startswith("[LLM error"):
+                content = f"[FALLBACK: {fb_model}] {fb_content}"
+                break
 
     if not content:
         content = "(no response)"

@@ -20,6 +20,7 @@ from .worker import run_worker
 from .synthesis import synthesize as run_synthesis
 from .preflight import analyze_question, build_worker_prompt
 from .skills import get_skill_registry
+from .llm import RunCost
 
 
 def _get_tool_names_for_skill(skill_name: str) -> list[str]:
@@ -52,7 +53,8 @@ def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) ->
     return prompt
 
 
-def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress=None):
+def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress=None,
+                          retry_cfg=None, cost=None, model_rates=None):
     """Run workers in parallel, capping concurrency at 5.
 
     Teams larger than 5 are queued: extra workers wait until a slot frees
@@ -68,7 +70,7 @@ def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, prog
             ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
                       w["angle"], w.get("prompt", ""),
                       ollama_base, fallback_models, w.get("tool_bundle", "default"),
-                      progress): i
+                      progress, retry_cfg, cost, model_rates): i
             for i, w in enumerate(workers)
         }
         for f in as_completed(futures):
@@ -84,7 +86,8 @@ def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, prog
     return results
 
 
-def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress=None):
+def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress=None,
+                          retry_cfg=None, cost=None, model_rates=None):
     """Run workers sequentially, passing previous outputs down the chain."""
     results = []
     completed = {}
@@ -115,7 +118,7 @@ def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_model
                     i + 1, goal, w["name"], w["model"],
                     w["angle"], w["prompt"],
                     ollama_base, fallback_models, w.get("tool_bundle", "default"),
-                    progress,
+                    progress, retry_cfg, cost, model_rates,
                 )
                 results.append(r)
                 completed[i] = r
@@ -141,7 +144,11 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
                 synthesize: bool = True,
                 synthesis_model: str | None = None,
                 skill: str | None = None,
-                progress_callback=None) -> dict:
+                progress_callback=None,
+                stream_callback=None,
+                credible_domains: tuple = (".gov", ".edu", ".mil"),
+                retry_cfg: dict | None = None,
+                model_costs: dict | None = None) -> dict:
     """Run the swarm and return results with scratchpad data.
 
     Args:
@@ -150,6 +157,12 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         progress_callback: Optional callable(event, payload) receiving
             preflight_start, preflight_done, worker_start, worker_done,
             synthesis_start, synthesis_done, done events.
+        stream_callback: Optional callable(chunk, phase) receiving streamed
+            tokens from preflight and synthesis (phase in {"preflight",
+            "synthesis"}).
+        credible_domains: Domain suffixes that boost source credibility.
+        retry_cfg: Optional {max_attempts, base_delay, max_delay} for LLM calls.
+        model_costs: Optional {model_tag: {input_per_1k, output_per_1k}}.
     """
     if team is None:
         team = []
@@ -159,6 +172,10 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         fallback_models = []
     if progress_callback is None:
         progress_callback = lambda *_: None
+    if stream_callback is None:
+        stream_callback = lambda *_: None
+
+    cost = RunCost()
 
     # Create the write-only scratchpad for raw findings
     sp = Scratchpad()
@@ -168,7 +185,9 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
     print(f"  [PREFLIGHT] Analyzing question for strategy…", file=sys.stderr)
     progress_callback("preflight_start", {"goal": goal, "num_workers": num_workers})
     preflight_model = synthesis_model or default_worker or "gpt-oss:120b-cloud"
-    preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base, num_workers=num_workers)
+    preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base,
+                                 num_workers=num_workers, stream_cb=stream_callback,
+                                 retry_cfg=retry_cfg, cost=cost, model_rates=model_costs)
     strategies = preflight["strategies"]
     answer_type = preflight["answer_type"]
     research_mode = preflight.get("research_mode", "objective")
@@ -239,9 +258,11 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
 
     # Execute workers in the right mode
     if execution_mode == "pipeline":
-        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress_callback)
+        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress_callback,
+                                        retry_cfg, cost, model_costs)
     else:
-        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress_callback)
+        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress_callback,
+                                        retry_cfg, cost, model_costs)
 
     # Surface worker errors to the end user
     errored = [r for r in results if r.get("status") != "ok"]
@@ -251,9 +272,13 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         print(f"     Synthesis will use only the {len(results) - len(errored)} successful worker outputs.", file=out)
 
     # Collect scratchpad summary
+    sp.score_sources(credible_domains=credible_domains)
     scratch_summary = sp.get_summary()
     scratch_findings = sp.get_all_findings()
     scratch_sources = sp.get_all_sources()
+    top_sources = sp.top_sources(limit=20, credible_domains=credible_domains)
+    for src in top_sources:
+        src["findings"] = [f[2] for f in sp.findings_for_source(src["url"])]
     sp.close()
     set_scratchpad(None)
 
@@ -268,6 +293,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
             "summary": scratch_summary,
             "findings": scratch_findings,
             "sources": scratch_sources,
+            "top_sources": top_sources,
         },
     }
 
@@ -277,13 +303,22 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         print(f"\n  🎯 Orchestrator synthesizing... (model: {syn_model.split(':')[0]})", file=out)
         progress_callback("synthesis_start", {"model": syn_model})
         syn_start = time.time()
-        synthesis_text = run_synthesis(goal, result, model=syn_model, ollama_base=ollama_base)
+        syn = run_synthesis(
+            goal, result, model=syn_model, ollama_base=ollama_base,
+            credible_domains=credible_domains,
+            stream_cb=stream_callback,
+        )
         syn_elapsed = round(time.time() - syn_start, 1)
+        synthesis_text = syn["synthesis"]
         result["synthesis"] = synthesis_text
         result["synthesis_model"] = syn_model
         result["synthesis_time_s"] = syn_elapsed
+        result["citations"] = syn["citations"]
+        result["sources_used"] = syn["sources_used"]
+        result["sources_total"] = syn["sources_total"]
         if not synthesis_text.startswith("[Synthesis error"):
-            print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars)", file=out)
+            print(f"  ✅ Orchestrator synthesis done ({syn_elapsed}s, {len(synthesis_text)} chars, "
+                  f"{syn['sources_used']}/{syn['sources_total']} sources cited)", file=out)
         else:
             print(f"  ⚠️  Orchestrator synthesis failed ({syn_elapsed}s)", file=out)
         progress_callback("synthesis_done", {
@@ -291,11 +326,17 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
             "chars": len(synthesis_text),
             "time_s": syn_elapsed,
             "ok": not synthesis_text.startswith("[Synthesis error"),
+            "sources_used": syn["sources_used"],
+            "sources_total": syn["sources_total"],
         })
     else:
         result["synthesis"] = ""
         result["synthesis_model"] = ""
         result["synthesis_time_s"] = 0
+        result["citations"] = []
+        result["sources_used"] = 0
+        result["sources_total"] = 0
 
+    result["cost"] = cost.to_dict()
     progress_callback("done", result)
     return result

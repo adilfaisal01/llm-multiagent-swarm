@@ -113,6 +113,27 @@ def save_markdown(result: dict, goal: str, filepath: str | None = None) -> str:
                 f.write(f"- [{title}]({url}) — {worker}\n")
             f.write("\n")
 
+        # Credibility-ranked, deduplicated sources (with stars + corroboration)
+        top = sp.get("top_sources", [])
+        if top:
+            f.write("## ⭐ Top Sources (by credibility)\n\n")
+            f.write("| # | Domain | Credibility | Corroboration | URL |\n")
+            f.write("|---|--------|-------------|---------------|-----|\n")
+            for i, src in enumerate(top, start=1):
+                stars = "★" * max(1, min(3, round(src.get("credibility", 0.0) * 3)))
+                f.write(f"| {i} | {src.get('domain', '')} | {stars} ({src.get('credibility', 0.0)}) "
+                        f"| {src.get('corroboration', 1)} | {src.get('url', '')} |\n")
+            f.write("\n")
+
+        # Inline citations map (from synthesis)
+        citations = result.get("citations", [])
+        if citations:
+            f.write("## 📚 Citations\n\n")
+            for c in citations:
+                stars = "★" * max(1, min(3, round(c.get("credibility", 0.0) * 3)))
+                f.write(f"{c['n']}. {c['url']} — {c.get('domain', '')} ({stars})\n")
+            f.write("\n")
+
     return filepath
 
 

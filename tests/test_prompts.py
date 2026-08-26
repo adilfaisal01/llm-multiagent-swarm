@@ -58,11 +58,13 @@ class TestPrompts(unittest.TestCase):
                     num_workers=3,
                     worker_section="ws",
                     findings_section="fs",
+                    source_section="[1] example.com (★★) — title",
                     synthesis_instructions=instructions,
                 )
                 self.assertIn(mode.upper(), prompt)
                 self.assertIn("ws", prompt)
                 self.assertIn("fs", prompt)
+                self.assertIn("[1] example.com", prompt)
 
 
 if __name__ == "__main__":

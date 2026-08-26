@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 from swarm import search
+from swarm.cache import cache_enabled, cache_key, get_cache
 from swarm.scratchpad import get_scratchpad
 from .base import BaseTool
 
@@ -42,7 +43,21 @@ class WebSearch(BaseTool):
         backend = search.BACKENDS.get(os.environ.get("SEARCH_BACKEND", "ddgs"))
         if not backend:
             return f"[Search error: unknown backend]"
-        result = backend(query)
+
+        # Cache lookup: identical (backend, query) hits skip the network call.
+        # A cache hit still logs to the scratchpad, so it's transparent to the worker.
+        cache = get_cache() if cache_enabled() else None
+        if cache:
+            key = cache_key(os.environ.get("SEARCH_BACKEND", "ddgs"), query)
+            cached = cache.get(key)
+            if cached is not None:
+                result = cached
+            else:
+                result = backend(query)
+                cache.set(key, result)
+        else:
+            result = backend(query)
+
         sp = get_scratchpad()
         if sp:
             sp.add_finding(worker_name, f"Search: {query}", "", "search", "high")

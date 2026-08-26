@@ -11,8 +11,8 @@ preflight pass uses the orchestrator model to:
 import json
 import re
 import sys
-import urllib.request
 
+from .llm import call_llm
 from .prompts import load_prompt, render_prompt
 from .skills import get_skill_registry
 
@@ -32,7 +32,9 @@ def _valid_skill(name: str) -> str:
 
 def analyze_question(goal: str, model: str,
                      ollama_base: str = "http://localhost:11434",
-                     num_workers: int = 3) -> dict:
+                     num_workers: int = 3,
+                     stream_cb=None, retry_cfg: dict | None = None,
+                     cost=None, model_rates: dict | None = None) -> dict:
     """Use the orchestrator model to analyze a question and generate strategies.
 
     Returns:
@@ -56,28 +58,25 @@ def analyze_question(goal: str, model: str,
     )
     system_prompt = load_prompt("preflight_system")
 
-    payload = {
-        "model": model,
-        "messages": [
+    content = call_llm(
+        model,
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "stream": False,
-        "options": {"temperature": 0.2, "num_predict": 2048},
-    }
-
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{ollama_base}/api/chat",
-        data=data,
-        headers={"Content-Type": "application/json"},
+        ollama_base=ollama_base,
+        stream=stream_cb is not None,
+        temperature=0.2,
+        max_tokens=2048,
+        timeout=60,
+        purpose="preflight",
+        retry_cfg=retry_cfg,
+        cost=cost,
+        model_rates=model_rates,
+        stream_cb=stream_cb,
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read())
-            content = result.get("message", {}).get("content", "").strip()
-    except Exception as e:
+    if content.startswith("[LLM error"):
         return {
             "answer_type": "other",
             "bundles": ["default"] * num_workers,

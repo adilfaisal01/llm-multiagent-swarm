@@ -16,4 +16,15 @@ Below are their reports and the raw findings they collected.
 {findings_section}
 ---
 
+### Numbered Sources
+
+The sources below are numbered. When you state a fact, claim, or number,
+cite it by appending the source number in square brackets, e.g. `[1]` or `[3]`.
+Cite the most specific source for each claim. You may cite multiple sources
+for one claim, e.g. `[1][2]`. Only cite sources from this list — never invent
+a number.
+
+{source_section}
+---
+
 {synthesis_instructions}

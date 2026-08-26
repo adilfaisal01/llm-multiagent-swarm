@@ -25,6 +25,10 @@ from swarm.skills import get_skill_registry, reset_skill_registry
 from swarm.tools import get_registry, reset_registry
 from swarm.tools.base import BaseTool
 
+# The result cache is a process-wide singleton; hermetic tool tests must not
+# leak cached values between tests (the cache has its own dedicated suite).
+os.environ["SWARM_CACHE"] = "0"
+
 
 def _fresh_registry():
     """Reset global registries and return a freshly discovered registry."""

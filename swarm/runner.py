@@ -29,6 +29,7 @@ def run_swarm(
     ollama_host: str | None = None,
     synthesize: bool = True,
     progress_callback=None,
+    stream_callback=None,
 ) -> dict:
     """Run the swarm and return results.
 
@@ -47,6 +48,9 @@ def run_swarm(
         json_mode: Return JSON-serializable output.
         ollama_host: Ollama base URL. Defaults to OLLAMA_HOST env or http://localhost:11434.
         progress_callback: Optional callable(event, payload) for live UI updates.
+        stream_callback: Optional callable(chunk, phase) receiving streamed
+            tokens from preflight and synthesis (phase in {"preflight",
+            "synthesis"}).
 
     Returns:
         Dict with keys: goal, num_workers, models, wall_time_s, workers, scratchpad.
@@ -135,6 +139,10 @@ def run_swarm(
         synthesis_model=defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud"),
         skill=skill,
         progress_callback=progress_callback,
+        stream_callback=stream_callback,
+        credible_domains=defaults["credible_domains"],
+        retry_cfg=defaults["retry"],
+        model_costs=defaults["model_costs"],
     )
 
     return result
