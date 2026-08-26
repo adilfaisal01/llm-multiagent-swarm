@@ -72,7 +72,8 @@ swarm/
     ├── wayback_machine.py # Find archived snapshots of URLs
     ├── http_request.py # Generic REST API client
     ├── pdf_extract.py # Read PDFs (optional pdf extra)
-    └── sql_query.py # Run read-only SQL against a local DB
+    ├── sql_query.py # Run read-only SQL against a local DB
+    └── regex_extract.py # Extract structured data from text
 ```
 
 ## Key Design Decisions

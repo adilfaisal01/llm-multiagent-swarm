@@ -19,6 +19,7 @@ auto-discovered by the `ToolRegistry`; skills reference them **by name** in
 | `http_request` | `http_request.py` | Generic REST API client (GET/POST/PUT/DELETE) | findings | yes |
 | `pdf_extract` | `pdf_extract.py` | Extract text from PDF files (requires `pdf` extra) | findings | no |
 | `sql_query` | `sql_query.py` | Run read-only SELECT queries on a local SQLite DB | findings | no |
+| `regex_extract` | `regex_extract.py` | Extract structured data from text with a regex | none | no |
 
 ## Optional-extras tools
 

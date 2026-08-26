@@ -532,6 +532,55 @@ class TestSqlQueryTool(_ScratchpadTestCase):
         self.assertEqual(len(self.sp.get_all_sources()), 0)
 
 
+class TestRegexExtractTool(unittest.TestCase):
+    """swarm/tools/regex_extract.py — RegexExtract."""
+
+    def setUp(self):
+        self.reg = _fresh_registry()
+
+    def tearDown(self):
+        reset_registry()
+        reset_skill_registry()
+
+    def test_no_text_returns_error(self):
+        result = self.reg.execute("regex_extract", {"pattern": r"\d+"})
+        self.assertEqual(result, "Error: no text provided")
+
+    def test_no_pattern_returns_error(self):
+        result = self.reg.execute("regex_extract", {"text": "abc 123"})
+        self.assertEqual(result, "Error: no pattern provided")
+
+    def test_extracts_numbers(self):
+        result = self.reg.execute("regex_extract", {"text": "orders: 10, 20, 30", "pattern": r"\d+"})
+        self.assertEqual(result, "10\n20\n30")
+
+    def test_capture_group(self):
+        result = self.reg.execute(
+            "regex_extract", {"text": "price=$5.25 qty=3", "pattern": r"price=\$(\d+\.\d+)"}
+        )
+        self.assertEqual(result, "5.25")
+
+    def test_group_index_selects_subgroup(self):
+        result = self.reg.execute(
+            "regex_extract",
+            {"text": "2023-01-15 and 2024-06-01", "pattern": r"(\d{4})-(\d{2})-(\d{2})", "group": 2},
+        )
+        self.assertEqual(result, "01\n06")
+    def test_case_insensitive_flag(self):
+        result = self.reg.execute(
+            "regex_extract", {"text": "HeLLo world", "pattern": r"hello", "flags": "i"}
+        )
+        self.assertEqual(result, "HeLLo")  # whole match preserved as-is
+
+    def test_no_matches_message(self):
+        result = self.reg.execute("regex_extract", {"text": "abc", "pattern": r"\d+"})
+        self.assertIn("No matches", result)
+
+    def test_invalid_regex_returns_error(self):
+        result = self.reg.execute("regex_extract", {"text": "abc", "pattern": r"("})
+        self.assertIn("invalid regex", result)
+
+
 class TestScratchpadAddTool(_ScratchpadTestCase):
     """swarm/tools/scratchpad.py — ScratchpadAdd."""
 
