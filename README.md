@@ -243,14 +243,16 @@ CRITICAL INSTRUCTIONS — FOLLOW THESE EXACTLY:
 | `multi-hop` | web_search, web_extract, scratchpad_add | Chaining facts across sources (pipeline mode) |
 | `comparison` | web_search, web_extract, scratchpad_add | Comparing products/tools/options side-by-side |
 | `academic` | wikipedia_search, arxiv_search, web_search, web_extract, pdf_extract, scratchpad_add | Academic literature / papers / methodology (ships a 5-worker team) |
+| `legal` | web_search, web_extract, wayback_machine, scratchpad_add | Laws, statutes, court cases (ships a 5-worker team) |
 
-**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
+**Full-pack skills** (`research`, `reverse-engineering`, `fact-check`, `academic`, `legal`) ship a `team.json` with named workers, models, and angles. Run them with `--skill <name>`:
 
 ```bash
 python3 -m swarm --skill research --goal "Your research question"
 python3 -m swarm --skill reverse-engineering --goal "Reverse engineer this payload at /path/to/payload.js"
 python3 -m swarm --skill fact-check --goal "Is it true that [claim]?"
 python3 -m swarm --skill academic --goal "What does the literature say about [topic]?"
+python3 -m swarm --skill legal --goal "What are the rules on [legal topic]?"
 ```
 
 **Customizing a skill:** edit its `team.json` (workers/models/angles/prompts) or copy the folder to `swarm/skills/research-<topic>/`, update the `name` field in `SKILL.md`, and run with `--skill research-<topic>`. No code changes needed.
@@ -557,6 +559,7 @@ Run with `python3 -m swarm --tui`:
 │   │   ├── multi-hop/SKILL.md
 │   │   ├── comparison/SKILL.md
 │   │   ├── academic/      # Full pack: SKILL.md + team.json
+│   │   ├── legal/         # Full pack: SKILL.md + team.json
 │   │   └── reverse-engineering/  # Full pack: SKILL.md + team.json
 │   ├── integrations/      # External harness adapters
 │   │   └── mcp/           # MCP server: swarm_research tool (optional extra)

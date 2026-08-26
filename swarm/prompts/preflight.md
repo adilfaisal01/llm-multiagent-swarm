@@ -34,6 +34,7 @@ IMPORTANT: Choose skills that match the question:
   - Chaining facts across sources (A→B→C)? → use "multi-hop" skill (pipeline mode)
   - Comparing products/tools/options? → use "comparison" skill
   - Academic literature / papers / methodology? → use "academic" skill
+  - Laws, statutes, court cases, legal questions? → use "legal" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill
