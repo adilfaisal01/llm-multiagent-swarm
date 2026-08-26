@@ -23,3 +23,4 @@ recommended model, optional team, and mode. Full-pack skills also ship a
 | `medical` | wikipedia_search, arxiv_search, web_search, web_extract, scratchpad_add | parallel | yes (5) | Health, treatments, drugs, medical evidence |
 | `finance` | web_search, web_extract, http_request, sql_query, scratchpad_add | parallel | yes (5) | Companies, markets, financials, valuation |
 | `data-analysis` | read_file, sql_query, python_exec, regex_extract, scratchpad_add | pipeline | yes (5) | Analyzing a data file / statistics / trends |
+| `summarize` | read_file, pdf_extract, web_extract, python_exec, scratchpad_add | parallel | yes (5) | Summarizing a document, PDF, or URL |

@@ -108,7 +108,7 @@ class TestSkillRegistry(unittest.TestCase):
         names = sr.names()
         for expected in ("default", "research", "search", "vision", "code", "files",
                          "reverse-engineering", "fact-check", "code-debug", "multi-hop", "comparison",
-                         "academic", "legal", "medical", "finance", "data-analysis"):
+                         "academic", "legal", "medical", "finance", "data-analysis", "summarize"):
             self.assertIn(expected, names)
 
     def test_descriptions_include_triggers(self):
@@ -264,6 +264,20 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIn("python_exec", names)
         self.assertIn("regex_extract", names)
         team = sr.load_team("data-analysis")
+        assert team is not None
+        self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
+
+    def test_summarize_skill_tools_and_team(self):
+        sr = get_skill_registry()
+        skill = sr.get("summarize")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.mode, "parallel")
+        tools = sr.tools_for("summarize")
+        names = [t.name for t in tools]
+        self.assertIn("read_file", names)
+        self.assertIn("pdf_extract", names)
+        self.assertIn("web_extract", names)
+        team = sr.load_team("summarize")
         assert team is not None
         self.assertEqual([m["name"] for m in team["team"]], ["Vera", "Cyrus", "Romy", "Ash", "Zara"])
 

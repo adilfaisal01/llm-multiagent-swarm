@@ -38,6 +38,7 @@ IMPORTANT: Choose skills that match the question:
   - Health, treatments, drugs, medical evidence? → use "medical" skill
   - Companies, markets, financials, valuation? → use "finance" skill
   - Analyzing a data file / statistics / trends? → use "data-analysis" skill (pipeline mode)
+  - Summarizing a document, PDF, or URL? → use "summarize" skill
   - Open-ended multi-perspective research? → use "research" skill
   - Simple fact lookup? → use "search" skill
   - General web research? → use "default" skill
