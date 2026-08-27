@@ -5,6 +5,7 @@ Workers get tool bundles assigned by preflight based on the question.
 """
 
 from __future__ import annotations
+import json
 import time
 
 from .llm import call_llm
@@ -19,7 +20,7 @@ def run_worker(
     model_name: str,
     angle: str,
     prompt_template: str = "",
-    ollama_base: str = "http://localhost:11434",
+    config: dict | None = None,
     fallback_models: list | None = None,
     tool_bundle: str = "default",
     progress=None,
@@ -77,10 +78,9 @@ def run_worker(
         content = call_llm(
             model_name,
             messages,
-            ollama_base=ollama_base,
+            config=config,
             tools=ollama_tools,
             temperature=0.3,
-            max_tokens=4096,
             purpose="worker",
             retry_cfg=retry_cfg,
             cost=cost,
@@ -109,7 +109,11 @@ def run_worker(
 
         for tc in tool_calls:
             fn_name = tc["function"]["name"]
-            args = tc["function"].get("arguments", {})
+            raw_args = tc["function"].get("arguments", "{}")
+            if isinstance(raw_args, str):
+                args = json.loads(raw_args) if raw_args else {}
+            else:
+                args = raw_args
             progress("worker_tool_call", {
                 "worker_id": task_id,
                 "name": worker_name,
@@ -119,12 +123,12 @@ def run_worker(
             })
             result_content = registry.execute(
                 fn_name,
-                tc["function"].get("arguments", {}),
+                args,
                 worker_name=worker_name,
             )
             messages.append({
                 "role": "tool",
-                "tool_name": fn_name,
+                "tool_call_id": tc.get("id", ""),
                 "content": result_content[:5000],
             })
             # If this is a read_image or python_exec result with real data,
@@ -153,9 +157,8 @@ def run_worker(
             content = call_llm(
                 model_name,
                 messages,
-                ollama_base=ollama_base,
+                config=config,
                 temperature=0.3,
-                max_tokens=4096,
                 purpose="worker_force",
                 retry_cfg=retry_cfg,
                 cost=cost,
@@ -176,7 +179,7 @@ def run_worker(
                     {"role": "system", "content": render_prompt("fallback_system")},
                     {"role": "user", "content": render_prompt("fallback_user", goal=goal)}
                 ],
-                ollama_base=ollama_base,
+                config=config,
                 temperature=0.3,
                 max_tokens=1024,
                 timeout=60,

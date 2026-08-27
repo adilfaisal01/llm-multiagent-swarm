@@ -860,44 +860,44 @@ class TestReadImageTool(unittest.TestCase):
         result = self.reg.execute("read_image", {"path": "/nonexistent/img.png"})
         self.assertIn("file not found", result)
 
-    def test_reads_file_and_calls_ollama(self):
+    def test_reads_file_and_calls_vision_model(self):
         captured = {}
 
-        def fake_urlopen(req, timeout=120):
-            captured["url"] = req.full_url
-            captured["payload"] = json.loads(req.data)
-            return io.BytesIO(json.dumps({"message": {"content": "a red square"}}).encode())
+        def fake_call_llm(model, messages, **kwargs):
+            captured["model"] = model
+            captured["messages"] = messages
+            return "a red square"
 
-        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch("swarm.tools.vision.call_llm", side_effect=fake_call_llm):
             result = self.reg.execute("read_image", {"path": str(self.img)})
         self.assertEqual(result, "a red square")
-        self.assertIn("images", captured["payload"]["messages"][0])
-        self.assertTrue(captured["payload"]["messages"][0]["images"][0])
+        self.assertEqual(captured["model"], "ollama/qwen3.5:397b-cloud")
+        content = captured["messages"][0]["content"]
+        self.assertEqual(content[0]["type"], "text")
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
 
     def test_empty_response_handled(self):
-        with patch("urllib.request.urlopen") as mock_urlopen:
-            mock_urlopen.return_value.__enter__.return_value.read.return_value = (
-                json.dumps({"message": {"content": ""}}).encode()
-            )
+        with patch("swarm.tools.vision.call_llm", return_value=""):
             result = self.reg.execute("read_image", {"path": str(self.img)})
         self.assertEqual(result, "(vision model returned empty)")
 
-    def test_ollama_http_error_surfaced(self):
-        with patch("urllib.request.urlopen", side_effect=OSError("boom")):
+    def test_llm_error_surfaced(self):
+        with patch("swarm.tools.vision.call_llm", return_value="[LLM error: boom]"):
             result = self.reg.execute("read_image", {"path": str(self.img)})
         self.assertIn("[ReadImage error:", result)
 
-    def test_ollama_host_env_respected(self):
+    def test_vision_model_env_respected(self):
         captured = {}
 
-        def fake_urlopen(req, timeout=120):
-            captured["url"] = req.full_url
-            return io.BytesIO(json.dumps({"message": {"content": "ok"}}).encode())
+        def fake_call_llm(model, messages, **kwargs):
+            captured["model"] = model
+            return "ok"
 
-        with patch.dict(os.environ, {"OLLAMA_HOST": "http://example:9999"}):
-            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        with patch.dict(os.environ, {"SWARM_VISION_MODEL": "openai/gpt-4o"}):
+            with patch("swarm.tools.vision.call_llm", side_effect=fake_call_llm):
                 self.reg.execute("read_image", {"path": str(self.img)})
-        self.assertIn("http://example:9999", captured["url"])
+        self.assertEqual(captured["model"], "openai/gpt-4o")
 
 
 class TestSkillToolCoverage(unittest.TestCase):

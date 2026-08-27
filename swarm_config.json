@@ -1,4 +1,9 @@
 {
+  "providers": {
+    "ollama": {
+      "base_url": "http://localhost:11434/v1"
+    }
+  },
   "models": {
     "ministral": "ministral-3:14b-cloud",
     "nemotron": "nemotron-3-super:cloud",

@@ -88,7 +88,7 @@ def _append_sources_section(text: str, citations: list) -> str:
 
 
 def synthesize(goal: str, result: dict, model: str,
-               ollama_base: str = "http://localhost:11434",
+               config: dict | None = None,
                credible_domains: tuple = (".gov", ".edu", ".mil"),
                stream_cb=None, report: bool = False) -> dict:
     """Have the orchestrator model synthesize all worker findings into one answer.
@@ -97,7 +97,7 @@ def synthesize(goal: str, result: dict, model: str,
         goal: The original research question.
         result: The full swarm result dict (workers, scratchpad, etc.).
         model: Model to use for synthesis (e.g. deepseek-v4-flash:cloud).
-        ollama_base: Ollama API base URL.
+        config: Loaded swarm config dict (providers, use_litellm).
         credible_domains: Domain suffixes that boost source credibility.
         stream_cb: Optional callable(chunk, phase) for streaming synthesis.
         report: If True, use the structured report synthesis prompt instead of
@@ -161,10 +161,9 @@ def synthesize(goal: str, result: dict, model: str,
     text = call_llm(
         model,
         messages,
-        ollama_base=ollama_base,
+        config=config,
         stream=stream_cb is not None,
         temperature=0.3,
-        max_tokens=4096,
         purpose="synthesis",
         stream_cb=stream_cb,
     )

@@ -31,7 +31,7 @@ def _valid_skill(name: str) -> str:
 
 
 def analyze_question(goal: str, model: str,
-                     ollama_base: str = "http://localhost:11434",
+                     config: dict | None = None,
                      num_workers: int = 3,
                      stream_cb=None, retry_cfg: dict | None = None,
                      cost=None, model_rates: dict | None = None) -> dict:
@@ -64,7 +64,7 @@ def analyze_question(goal: str, model: str,
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        ollama_base=ollama_base,
+        config=config,
         stream=stream_cb is not None,
         temperature=0.2,
         max_tokens=2048,

@@ -136,7 +136,7 @@ def _prior(s: dict) -> float:
 
 
 def ai_score_sources(sources: list[dict], *, model: str,
-                     ollama_base: str = "http://localhost:11434",
+                     config: dict | None = None,
                      retry_cfg: dict | None = None,
                      cost=None, model_rates: dict | None = None,
                      timeout: int = 120) -> dict[str, dict]:
@@ -160,7 +160,7 @@ def ai_score_sources(sources: list[dict], *, model: str,
             {"role": "system", "content": _JUDGE_SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        ollama_base=ollama_base,
+        config=config,
         temperature=0.2,
         max_tokens=2048,
         timeout=timeout,

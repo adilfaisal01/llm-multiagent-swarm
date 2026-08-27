@@ -1,18 +1,20 @@
-"""Vision tool — read images using Gemma4 vision model."""
+"""Vision tool — read images using a vision-capable model."""
 from __future__ import annotations
 import base64
-import json
 import os
-import urllib.request
 from .base import BaseTool
+from ..llm import call_llm
 
 
 class ReadImage(BaseTool):
     """Read an image file and extract its visual contents.
 
-    Sends the image (base64-encoded) to the Gemma4 vision model via Ollama
-    and returns the model's description. Used for questions that reference
-    an image, screenshot, chart, or figure.
+    Sends the image (base64-encoded) to a vision-capable model and
+    returns the model's description. Used for questions that reference
+    an image, screenshot, chart, or figure. The model defaults to
+    ``ollama/qwen3.5:397b-cloud`` and can be overridden via the
+    ``SWARM_VISION_MODEL`` env var (or ``vision_model`` in config, which
+    the runner mirrors to the env var).
     """
 
     name = "read_image"
@@ -61,32 +63,33 @@ class ReadImage(BaseTool):
         except Exception as e:
             return f"[ReadImage error: {e}]"
 
-        payload = json.dumps({
-            "model": "qwen3.5:397b-cloud",  # vision model (bake-off winner Aug 2026: most precise on values/scales/app-ID, clean content output)
-            "messages": [
-                {"role": "user", "content": question, "images": [img_b64]}
-            ],
-            "stream": False,
-            "options": {"num_predict": 1024, "temperature": 0.1},
-        }).encode()
-
-        ollama_base = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        if not ollama_base.startswith("http"):
-            ollama_base = f"http://{ollama_base}"
-
-        req = urllib.request.Request(
-            f"{ollama_base}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
+        vision_model = os.environ.get(
+            "SWARM_VISION_MODEL", "ollama/qwen3.5:397b-cloud"
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                data = json.loads(resp.read())
-                content = data.get("message", {}).get("content", "")
-                return content.strip() or "(vision model returned empty)"
-        except Exception as e:
-            return f"[ReadImage error: {e}]"
+        content = call_llm(
+            vision_model,
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                        },
+                    ],
+                }
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+            timeout=120,
+            purpose="vision",
+        )
+
+        if content.startswith("[LLM error"):
+            return f"[ReadImage error: {content}]"
+        return content.strip() or "(vision model returned empty)"
 
 
 TOOLS = [ReadImage()]

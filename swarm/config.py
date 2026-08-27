@@ -102,6 +102,8 @@ def get_defaults(config: dict | None = None) -> dict:
 
     model_costs = config.get("model_costs", {}) or {}
 
+    providers = config.get("providers", {}) or {}
+
     return {
         "worker_models": worker_models,
         "model_list": list(worker_models.keys()),
@@ -113,4 +115,5 @@ def get_defaults(config: dict | None = None) -> dict:
         "retry": retry,
         "cache_ttl": cache_ttl,
         "model_costs": model_costs,
+        "providers": providers,
     }

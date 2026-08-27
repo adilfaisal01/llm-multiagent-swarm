@@ -63,6 +63,15 @@ class TestRetryPolicy(unittest.TestCase):
 class TestCallLlm(unittest.TestCase):
     """swarm/llm.py — call_llm (native urllib path)."""
 
+    def setUp(self):
+        # Force the native urllib path regardless of whether litellm is
+        # installed (auto-detect would otherwise route to litellm).
+        self._litellm_patch = patch("swarm.llm.should_use_litellm", return_value=False)
+        self._litellm_patch.start()
+
+    def tearDown(self):
+        self._litellm_patch.stop()
+
     def test_happy_path_returns_content(self):
         with patch("urllib.request.urlopen", return_value=_ok_resp()):
             text = call_llm("m", [{"role": "user", "content": "hi"}])

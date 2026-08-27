@@ -62,14 +62,28 @@ def run_swarm(
     Returns:
         Dict with keys: goal, num_workers, models, wall_time_s, workers, scratchpad.
     """
-    # Resolve Ollama URL
-    ollama_raw = ollama_host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    ollama_base = f"http://{ollama_raw}" if not ollama_raw.startswith("http") else ollama_raw
-
     # Load config
     config_path = config_path or cfg.CONFIG_PATH
     loaded_config = cfg.load_swarm_config(config_path)
     defaults = cfg.get_defaults(loaded_config)
+
+    # Deprecated: ollama_host overrides the ollama provider base URL.
+    if ollama_host:
+        import warnings
+        warnings.warn(
+            "ollama_host is deprecated; use config providers block instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        raw = ollama_host if ollama_host.startswith("http") else f"http://{ollama_host}"
+        loaded_config.setdefault("providers", {})
+        loaded_config["providers"].setdefault("ollama", {})
+        loaded_config["providers"]["ollama"]["base_url"] = raw.rstrip("/") + "/v1"
+
+    # Mirror vision_model config to env so the vision tool can read it
+    # (hybrid: config drives env, tool reads env).
+    if loaded_config and loaded_config.get("vision_model"):
+        os.environ["SWARM_VISION_MODEL"] = loaded_config["vision_model"]
 
     # If a skill is named, load its team.json (if it ships one) as the config
     skill_team = None
@@ -108,7 +122,7 @@ def run_swarm(
         num_workers = min(max(workers, 1), 5)
     elif auto:
         est_model = defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud")
-        num_workers = estimate_complexity(goal, model=est_model, ollama_base=ollama_base)
+        num_workers = estimate_complexity(goal, model=est_model, config=loaded_config)
         print(f"  [AUTO] Estimated complexity: {num_workers}/5 workers (model: {est_model.split(':')[0]})", file=sys.stderr)
     elif skill_team:
         # Skill ships a team — default to the full team size (concurrency is
@@ -141,7 +155,7 @@ def run_swarm(
         angles=defaults["angles"],
         default_worker=defaults["default_worker"],
         fallback_models=defaults["fallback_models"],
-        ollama_base=ollama_base,
+        config=loaded_config,
         synthesize=synthesize,
         synthesis_model=defaults["worker_models"].get("deepseek", "deepseek-v4-flash:cloud"),
         skill=skill,

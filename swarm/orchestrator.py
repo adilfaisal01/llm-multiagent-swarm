@@ -54,7 +54,7 @@ def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) ->
     return prompt
 
 
-def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress=None,
+def _run_workers_parallel(workers, goal, config, fallback_models, out, progress=None,
                           retry_cfg=None, cost=None, model_rates=None):
     """Run workers in parallel, capping concurrency at 5.
 
@@ -70,7 +70,7 @@ def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, prog
         futures = {
             ex.submit(run_worker, i + 1, goal, w["name"], w["model"],
                       w["angle"], w.get("prompt", ""),
-                      ollama_base, fallback_models, w.get("tool_bundle", "default"),
+                      config, fallback_models, w.get("tool_bundle", "default"),
                       progress, retry_cfg, cost, model_rates): i
             for i, w in enumerate(workers)
         }
@@ -87,7 +87,7 @@ def _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, prog
     return results
 
 
-def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress=None,
+def _run_workers_pipeline(workers, depends_on, goal, config, fallback_models, out, progress=None,
                           retry_cfg=None, cost=None, model_rates=None):
     """Run workers sequentially, passing previous outputs down the chain."""
     results = []
@@ -118,7 +118,7 @@ def _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_model
                 r = run_worker(
                     i + 1, goal, w["name"], w["model"],
                     w["angle"], w["prompt"],
-                    ollama_base, fallback_models, w.get("tool_bundle", "default"),
+                    config, fallback_models, w.get("tool_bundle", "default"),
                     progress, retry_cfg, cost, model_rates,
                 )
                 results.append(r)
@@ -141,7 +141,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
                 team: list | None = None, angles: list | None = None,
                 default_worker: str | None = None,
                 fallback_models: list | None = None,
-                ollama_base: str = "http://localhost:11434",
+                config: dict | None = None,
                 synthesize: bool = True,
                 synthesis_model: str | None = None,
                 skill: str | None = None,
@@ -193,7 +193,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
     print(f"  [PREFLIGHT] Analyzing question for strategy…", file=sys.stderr)
     progress_callback("preflight_start", {"goal": goal, "num_workers": num_workers})
     preflight_model = synthesis_model or default_worker or "gpt-oss:120b-cloud"
-    preflight = analyze_question(goal, model=preflight_model, ollama_base=ollama_base,
+    preflight = analyze_question(goal, model=preflight_model, config=config,
                                  num_workers=num_workers, stream_cb=stream_callback,
                                  retry_cfg=retry_cfg, cost=cost, model_rates=model_costs)
     strategies = preflight["strategies"]
@@ -266,10 +266,10 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
 
     # Execute workers in the right mode
     if execution_mode == "pipeline":
-        results = _run_workers_pipeline(workers, depends_on, goal, ollama_base, fallback_models, out, progress_callback,
+        results = _run_workers_pipeline(workers, depends_on, goal, config, fallback_models, out, progress_callback,
                                         retry_cfg, cost, model_costs)
     else:
-        results = _run_workers_parallel(workers, goal, ollama_base, fallback_models, out, progress_callback,
+        results = _run_workers_parallel(workers, goal, config, fallback_models, out, progress_callback,
                                         retry_cfg, cost, model_costs)
 
     # Surface worker errors to the end user
@@ -298,7 +298,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         posteriors = ai_score_sources(
             top_sources,
             model=judge_model,
-            ollama_base=ollama_base,
+            config=config,
             retry_cfg=retry_cfg,
             cost=cost,
             model_rates=model_costs,
@@ -340,7 +340,7 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
         progress_callback("synthesis_start", {"model": syn_model})
         syn_start = time.time()
         syn = run_synthesis(
-            goal, result, model=syn_model, ollama_base=ollama_base,
+            goal, result, model=syn_model, config=config,
             credible_domains=credible_domains,
             stream_cb=stream_callback,
             report=report,

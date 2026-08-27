@@ -4,13 +4,13 @@ One quick LLM call before spawning workers. Negligible overhead
 compared to the full swarm run (~30s timeout, 4 tokens output).
 """
 
-import json
 import re
-import urllib.request
+
+from .llm import call_llm
 
 
 def estimate_complexity(goal: str, model: str,
-                        ollama_base: str = "http://localhost:11434") -> int:
+                        config: dict | None = None) -> int:
     """Ask the model to rate query complexity 1-5.
 
     Makes one quick call to the orchestrator model (DeepSeek V4 Flash).
@@ -28,32 +28,23 @@ def estimate_complexity(goal: str, model: str,
         f"Query: {goal}"
     )
 
-    payload = {
-        "model": model,
-        "messages": [
+    content = call_llm(
+        model,
+        [
             {"role": "system", "content": "You are a query complexity classifier. Respond with a single digit 1-5."},
             {"role": "user", "content": prompt},
         ],
-        "stream": False,
-        "options": {"temperature": 0.0, "num_predict": 200},
-    }
-
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        f"{ollama_base}/api/chat",
-        data=data,
-        headers={"Content-Type": "application/json"},
+        config=config,
+        temperature=0.0,
+        max_tokens=200,
+        timeout=30,
+        purpose="complexity",
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = json.loads(resp.read())
-            content = result.get("message", {}).get("content", "").strip()
+    if content.startswith("[LLM error"):
+        return 3  # safe default
 
-        match = re.search(r'[1-5]', content)
-        if match:
-            return int(match.group(0))
-    except Exception:
-        pass
-
+    match = re.search(r'[1-5]', content)
+    if match:
+        return int(match.group(0))
     return 3  # safe default
