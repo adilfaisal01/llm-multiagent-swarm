@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-08-27
+
+### Added
+- add glm-5.3-flash and minimax models to config and update agents' models (8d26d7c)
+- add --report flag and structured report generation support (7dcbc6c)
+
+### Changed
+- 8e9b969 release: v2.1.1 (8e9b969)
+- split README sections into per-topic docs/ files and slim README to summary + pointers (f862af9)
+- 27f66c0 Make LiteLLM tests skip cleanly when litellm absent; add CI providers-extra job (27f66c0)
+- e81ce3b Disable LiteLLM transport in default config (e81ce3b)
+- ba01951 Document OpenAI-compatible providers + optional LiteLLM transport (ba01951)
+- f404299 Route all call sites through config-based provider resolution (f404299)
+- 458f69b Add LiteLLM transport as optional providers extra (458f69b)
+- c50fc8d Speak OpenAI-compatible protocol in call_llm (native path) (c50fc8d)
+- eb4a9d5 Add provider resolution module (swarm/providers.py) (eb4a9d5)
+- add investigative report on Danielle Walter influencer timeline and controversies (07db9ad)
+- a265070 changelog: update for v2.1.0 (a265070)
 ## [2.1.0] - 2026-08-26
 
 ### Added
