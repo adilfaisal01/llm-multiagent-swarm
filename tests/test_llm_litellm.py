@@ -13,13 +13,18 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from litellm import Choices, Message, ModelResponse, Usage
-
 from swarm.llm import RunCost, call_llm
 from swarm.providers import has_litellm
 
 
+def _litellm():
+    """Import litellm lazily — only called when has_litellm() is True."""
+    from litellm import Choices, Message, ModelResponse, Usage
+    return Choices, Message, ModelResponse, Usage
+
+
 def _make_response(content: str = "hello", prompt_tokens: int = 10, completion_tokens: int = 5):
+    Choices, Message, ModelResponse, Usage = _litellm()
     return ModelResponse(
         choices=[Choices(message=Message(content=content), finish_reason="stop")],
         usage=Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
@@ -103,6 +108,7 @@ class TestCallLlmLiteLlm(unittest.TestCase):
         self.assertEqual(chunks, ["Par", "is"])
 
     def test_return_message_returns_dict(self):
+        Choices, Message, ModelResponse, Usage = _litellm()
         resp = ModelResponse(
             choices=[Choices(message=Message(content="hi", tool_calls=None), finish_reason="tool_calls")],
             usage=Usage(prompt_tokens=1, completion_tokens=1),
