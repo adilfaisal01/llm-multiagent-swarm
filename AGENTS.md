@@ -21,7 +21,8 @@ swarm/
 ├── scratchpad.py     # Write-only RAM SQLite for raw findings
 ├── search.py         # Search backends: SearXNG, DuckDuckGo, Google
 ├── synthesis.py      # Orchestrator synthesis (boss reads the room)
-├── llm.py            # Shared Ollama helper: retry/backoff, streaming, cost
+├── llm.py            # Shared LLM helper: OpenAI-compat + optional LiteLLM, retry/backoff, streaming, cost
+├── providers.py      # Provider resolution: model tags → endpoint, API key, headers
 ├── credibility.py    # AI-based probabilistic source credibility (Bayesian)
 ├── cache.py          # SQLite search/extract result cache
 ├── config.py         # Config loader from JSON file
@@ -179,9 +180,18 @@ This solved the "essay-writing" problem — workers actually use their tools now
 
 ### Streaming, retry, cache, cost
 - `run_swarm()` accepts `stream_callback(chunk, phase)` — preflight + synthesis stream tokens (`phase` in `{"preflight", "synthesis"}`); workers stay non-streaming
-- All Ollama calls go through `swarm/llm.py` (`call_llm`): up to 3 attempts, exp backoff + jitter, no retry on 4xx (except 429 honoring `Retry-After`), `RunCost` token/cost accounting
+- All LLM calls go through `swarm/llm.py` (`call_llm`): up to 3 attempts, exp backoff + jitter, no retry on 4xx (except 429 honoring `Retry-After`), `RunCost` token/cost accounting
 - `web_search`/`web_extract` results cached in SQLite (`swarm/cache.py`, keyed on `backend|query`, 24h TTL, `SWARM_CACHE=0` disables). Cache hits still log to the scratchpad — transparent to workers
 - Result dict gains a `cost` key; `estimated_cost_usd` is 0 until `model_costs` is populated in config
+
+### OpenAI-compatible providers
+- `call_llm` speaks the OpenAI-compatible `/v1/chat/completions` protocol (top-level `temperature`/`max_tokens`, SSE streaming with `[DONE]`, `choices[0].message`, `usage` token accounting) — covers OpenAI, Anthropic compat, Ollama `/v1`, Groq, Together, DeepSeek, OpenRouter, vLLM
+- Model tags carry a `provider/name` shape (`openai/gpt-4o`, `ollama/deepseek-v4-flash:cloud`); bare tags fall back to the `ollama` provider
+- `swarm/providers.py` (`resolve_endpoint`) maps tags → `(base_url, api_model, headers, api_key)` from the config `providers` block (`{base_url, api_key_env}` per provider); `OLLAMA_HOST` env is the default ollama base
+- **Optional LiteLLM transport**: if `litellm` is installed (`pip install -e ".[providers]"`, pinned `>=1.50,<2.0`), `call_llm` routes through `litellm.completion` for native providers (Anthropic, Gemini, Bedrock) and normalized tool calls. `use_litellm` config key forces the choice; otherwise auto-detected. `_should_retry` treats litellm rate-limit/connection/timeout exceptions as transient
+- `ollama_base` kwarg on `call_llm` and `ollama_host` on `run_swarm` are **deprecated** shims (build an ollama-only providers block) — do not use in new code
+- Vision tool reads `SWARM_VISION_MODEL` env (default `ollama/qwen3.5:397b-cloud`); the runner mirrors config `vision_model` to that env var
+- Tool-call boundary: `tool_calls[].arguments` may be a JSON **string** (native OpenAI) or dict (litellm) — `worker.py` `json.loads` when str; tool results echo `tool_call_id` (not `tool_name`)
 
 ### Complexity estimation
 - Uses DeepSeek V4 Flash to read the query and rate it 1-5
@@ -362,10 +372,11 @@ The mode changes:
 - **Result cache concurrency**: the `Cache` in `swarm/cache.py` guards all SQLite access with a `threading.Lock` — do not remove it, concurrent workers will corrupt the connection
 - **Persistent TUI dependency**: `textual>=0.70.0` is declared in `pyproject.toml`; install with `pip install -e .` or just `pip install textual`
 - **MCP dependency**: the `mcp` SDK is an optional extra (`pip install -e ".[mcp]"`). `swarm/integrations/mcp/` raises a clear `ImportError` if it's missing — the library core stays stdlib-only
+- **LiteLLM dependency**: `litellm` is an optional extra (`pip install -e ".[providers]"`, pinned `>=1.50,<2.0`). Without it, `call_llm` uses the stdlib OpenAI-compat path — the core stays stdlib-only
 - **TUI output**: Markdown auto-saved to `swarm_outputs/` on every run; live sources shown in side panel
 - **JSON output**: Goes to stdout (not stderr) so piping works: `python3 -m swarm --goal "..." --json | python3 -c "import json,sys; ..."`
-- **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`)
+- **Model names**: Use aliases from config (e.g. `deepseek`, `qwen`, `nemotron`) or full tags (e.g. `deepseek-v4-flash:cloud`). Provider-prefixed tags (`openai/gpt-4o`) route to that provider's endpoint
 - **Worker count**: Explicit `--workers N` is clamped to 1-5. When a skill ships a `team.json`, the runner defaults to the full team size (no clamp) — concurrency is capped at 5 in the orchestrator and extra workers queue until a slot frees up
-- **Ollama URL**: Defaults to `http://localhost:11434`. Set `OLLAMA_HOST` env var to override
-- **Vision**: Only Gemma4:31b-cloud works for images. Kimi K2.5 returns empty.
+- **Ollama URL**: Defaults to `http://localhost:11434`. Set `OLLAMA_HOST` env var to override (or set `providers.ollama.base_url` in config)
+- **Vision**: Defaults to `ollama/qwen3.5:397b-cloud` for images. Override with `SWARM_VISION_MODEL` env or `vision_model` config. Kimi K2.5 returns empty.
 - **xlsx merged cells**: The simple XML parser in `file_reader.py` can't handle merged cells

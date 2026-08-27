@@ -311,7 +311,8 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama API endpoint (default ollama provider base) |
+| `SWARM_VISION_MODEL` | `ollama/qwen3.5:397b-cloud` | Vision model for the `read_image` tool |
 | `SEARCH_BACKEND` | `ddgs` | Search engine: `ddgs`, `searxng`, or `google` |
 | `SEARXNG_URL` | `http://localhost:8080` | SearXNG endpoint (only for `searxng` backend) |
 | `SEARCH_API_KEY` | `""` | API key (required for `google` backend) |
@@ -328,9 +329,10 @@ All config is via environment variables or a JSON config file (`swarm_config.jso
 - **Streaming**: `run_swarm()` accepts a `stream_callback(chunk, phase)` hook
   (`phase` is `"preflight"` or `"synthesis"`). When provided, preflight and
   synthesis tokens stream through it. Worker turns stay non-streaming.
-- **Retry/backoff**: all Ollama calls go through `swarm/llm.py` with up to 3
+- **Retry/backoff**: all LLM calls go through `swarm/llm.py` with up to 3
   attempts, exponential backoff + jitter, no retry on 4xx (except 429, which
-  honors `Retry-After`).
+  honors `Retry-After`). LiteLLM rate-limit/connection/timeout exceptions are
+  treated as transient too.
 - **Result cache**: `web_search` and `web_extract` results are cached in
   SQLite keyed on `backend|query`, transparent to workers (a cache hit still
   logs to the scratchpad).
@@ -358,6 +360,32 @@ swarm. Install with `pip install -e ".[mcp]"`, run with `swarm-mcp` (or
 ### JSON config file
 
 The `swarm_config.json` file lets you customize models, team members, prompts, angles, and fallback models. Pass a custom config with `--config my_config.json` or `SWARM_CONFIG=my_config.json`.
+
+#### Providers (OpenAI-compatible APIs)
+
+Model tags carry a `provider/name` shape (e.g. `openai/gpt-4o`, `ollama/deepseek-v4-flash:cloud`). The `providers` block maps each provider to its base URL and API key env var:
+
+```json
+{
+  "providers": {
+    "ollama":     {"base_url": "http://localhost:11434/v1"},
+    "openai":     {"base_url": "https://api.openai.com/v1",    "api_key_env": "OPENAI_API_KEY"},
+    "anthropic":  {"base_url": "https://api.anthropic.com/v1", "api_key_env": "ANTHROPIC_API_KEY"},
+    "deepseek":   {"base_url": "https://api.deepseek.com",     "api_key_env": "DEEPSEEK_API_KEY"},
+    "openrouter": {"base_url": "https://openrouter.ai/api/v1", "api_key_env": "OPENROUTER_API_KEY"}
+  },
+  "models": {
+    "gpt-4o":  "openai/gpt-4o",
+    "claude":  "anthropic/claude-3-5-sonnet",
+    "deepseek": "deepseek/deepseek-chat"
+  }
+}
+```
+
+- **Bare tags** (no `/`, e.g. `gpt-oss:120b-cloud`) fall back to the `ollama` provider — existing configs keep working unchanged.
+- **`OLLAMA_HOST`** env var is honored as the default ollama base URL when no `providers.ollama.base_url` is set.
+- **`vision_model`** config key (or `SWARM_VISION_MODEL` env var) overrides the vision tool's default model (`ollama/qwen3.5:397b-cloud`).
+- **`use_litellm`** config key forces the transport: `true`/`false` override auto-detection. By default, if the optional `litellm` package is installed (`pip install -e ".[providers]"`), calls route through it for native provider support (Anthropic, Gemini, Bedrock, etc.) and normalized tool calls; otherwise the stdlib OpenAI-compat path is used.
 
 A config may also declare a `"skill"` field — the skill's prompt body and tools are used with the JSON's team:
 
@@ -410,7 +438,9 @@ python3 -m swarm --goal "Your question" --mix --config my_team.json
 
 ## How tool calling works
 
-Ollama's `/api/chat` endpoint supports native function calling. The swarm:
+The swarm speaks the OpenAI-compatible `/v1/chat/completions` protocol, which
+covers OpenAI, Anthropic (compat layer), Ollama (`/v1`), Groq, Together,
+DeepSeek, OpenRouter, vLLM, and more. The swarm:
 
 1. **Preflight** analyzes the question via the orchestrator LLM, which assigns tool bundles + execution mode
 2. Injects file paths (not file contents) into worker prompts
@@ -418,7 +448,7 @@ Ollama's `/api/chat` endpoint supports native function calling. The swarm:
 4. Sends prompt + tool definitions (filtered by bundle) to each model
 5. Model responds with `tool_calls` (search query, image read, code exec) or content (final answer)
 6. Script executes the tool against the configured backend
-7. Feeds results back as a `role: "tool"` message
+7. Feeds results back as a `role: "tool"` message with the matching `tool_call_id`
 8. Loop repeats up to 5 rounds until the model has enough info to answer
 
 If a model exhausts all tool rounds without producing a final answer, the script:
@@ -555,7 +585,8 @@ Run with `python3 -m swarm --tui`:
 │   ├── scratchpad.py      # Write-only RAM SQLite scratchpad
 │   ├── search.py          # Search backends (SearXNG, DDG, Google)
 │   ├── synthesis.py       # Orchestrator synthesis (boss reads the room)
-│   ├── llm.py             # Shared Ollama helper: retry/backoff, streaming, cost
+│   ├── llm.py             # Shared LLM helper: OpenAI-compat + optional LiteLLM, retry/backoff, streaming, cost
+│   ├── providers.py       # Provider resolution: model tags → endpoint, API key, headers
 │   ├── credibility.py     # AI-based probabilistic source credibility (Bayesian)
 │   ├── cache.py           # SQLite search/extract result cache
 │   ├── config.py          # Config loader + defaults
