@@ -1,7 +1,8 @@
 """Hermetic tests for the shared LLM helper (swarm/llm.py).
 
 Mocks urllib so no network is touched. Verifies retry/backoff behavior,
-4xx non-retry, 429 Retry-After handling, streaming, and cost accounting.
+4xx non-retry, 429 Retry-After handling, streaming, cost accounting,
+provider resolution, and the deprecated ollama_base shim.
 
 Run with:
     python3 -m unittest discover tests/
@@ -34,9 +35,8 @@ class _FakeResp:
 
 def _ok_resp(content: str = "hello", prompt_tokens: int = 10, completion_tokens: int = 5):
     body = json.dumps({
-        "message": {"content": content},
-        "prompt_eval_count": prompt_tokens,
-        "eval_count": completion_tokens,
+        "choices": [{"message": {"content": content}}],
+        "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
     }).encode()
     return _FakeResp(body)
 
@@ -61,7 +61,7 @@ class TestRetryPolicy(unittest.TestCase):
 
 
 class TestCallLlm(unittest.TestCase):
-    """swarm/llm.py — call_llm."""
+    """swarm/llm.py — call_llm (native urllib path)."""
 
     def test_happy_path_returns_content(self):
         with patch("urllib.request.urlopen", return_value=_ok_resp()):
@@ -90,7 +90,7 @@ class TestCallLlm(unittest.TestCase):
             calls["n"] += 1
             raise urllib.error.HTTPError(req.full_url, 400, "x", {}, None)
 
-        with patch("urllib.request.urlopen", side_effect=bad), patch("time.sleep", lambda s: None):
+        with patch("urllib.request.urlopen", side_effect=bad):
             text = call_llm("m", [{"role": "user", "content": "hi"}])
         self.assertTrue(text.startswith("[LLM error"))
         self.assertEqual(calls["n"], 1)
@@ -107,8 +107,9 @@ class TestCallLlm(unittest.TestCase):
     def test_streaming_accumulates_and_forwards(self):
         chunks = []
         lines = [
-            json.dumps({"message": {"content": "Par"}}).encode() + b"\n",
-            json.dumps({"message": {"content": "is"}}).encode() + b"\n",
+            b"data: " + json.dumps({"choices": [{"delta": {"content": "Par"}}]}).encode() + b"\n",
+            b"data: " + json.dumps({"choices": [{"delta": {"content": "is"}}]}).encode() + b"\n",
+            b"data: [DONE]\n",
         ]
 
         class _StreamResp:
@@ -146,11 +147,79 @@ class TestCallLlm(unittest.TestCase):
         self.assertEqual(cost.to_dict()["estimated_cost_usd"], 0.0)
 
     def test_missing_usage_fields_do_not_raise(self):
-        body = json.dumps({"message": {"content": "x"}}).encode()
+        body = json.dumps({"choices": [{"message": {"content": "x"}}]}).encode()
         cost = RunCost()
         with patch("urllib.request.urlopen", return_value=_FakeResp(body)):
             call_llm("m", [{"role": "user", "content": "hi"}], cost=cost)
         self.assertEqual(cost.to_dict()["prompt_tokens"], 0)
+
+    def test_max_tokens_none_applies_safety_cap(self):
+        captured = {}
+
+        def cap(req, timeout=120):
+            captured["body"] = json.loads(req.data)
+            return _ok_resp()
+
+        with patch("urllib.request.urlopen", side_effect=cap):
+            call_llm("m", [{"role": "user", "content": "hi"}])
+        self.assertEqual(captured["body"]["max_tokens"], 32768)
+
+    def test_max_tokens_set_overrides_safety_cap(self):
+        captured = {}
+
+        def cap(req, timeout=120):
+            captured["body"] = json.loads(req.data)
+            return _ok_resp()
+
+        with patch("urllib.request.urlopen", side_effect=cap):
+            call_llm("m", [{"role": "user", "content": "hi"}], max_tokens=512)
+        self.assertEqual(captured["body"]["max_tokens"], 512)
+
+    def test_uses_chat_completions_endpoint(self):
+        captured = {}
+
+        def cap(req, timeout=120):
+            captured["url"] = req.full_url
+            return _ok_resp()
+
+        with patch("urllib.request.urlopen", side_effect=cap):
+            call_llm("m", [{"role": "user", "content": "hi"}])
+        self.assertTrue(captured["url"].endswith("/v1/chat/completions"))
+
+    def test_authorization_header_from_config(self):
+        captured = {}
+
+        def cap(req, timeout=120):
+            captured["headers"] = req.headers
+            return _ok_resp()
+
+        cfg = {"providers": {"openai": {"base_url": "https://api.openai.com/v1", "api_key_env": "TEST_OPENAI_KEY"}}}
+        with patch("urllib.request.urlopen", side_effect=cap), patch.dict("os.environ", {"TEST_OPENAI_KEY": "sk-secret"}):
+            call_llm("openai/gpt-4o", [{"role": "user", "content": "hi"}], config=cfg)
+        self.assertEqual(captured["headers"]["Authorization"], "Bearer sk-secret")
+
+    def test_ollama_base_deprecated_but_works(self):
+        captured = {}
+
+        def cap(req, timeout=120):
+            captured["url"] = req.full_url
+            return _ok_resp()
+
+        with patch("urllib.request.urlopen", side_effect=cap), patch("warnings.warn") as warn:
+            call_llm("m", [{"role": "user", "content": "hi"}], ollama_base="http://localhost:11434")
+        self.assertTrue(captured["url"].startswith("http://localhost:11434/v1/chat/completions"))
+        warn.assert_called_once()
+        self.assertEqual(warn.call_args.args[1], DeprecationWarning)
+
+    def test_return_message_returns_full_message(self):
+        body = json.dumps({
+            "choices": [{"message": {"content": "hi", "tool_calls": [{"id": "1", "function": {"name": "web_search", "arguments": "{}"}}]}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }).encode()
+        with patch("urllib.request.urlopen", return_value=_FakeResp(body)):
+            msg = call_llm("m", [{"role": "user", "content": "hi"}], return_message=True)
+        self.assertEqual(msg["content"], "hi")
+        self.assertEqual(msg["tool_calls"][0]["function"]["name"], "web_search")
 
 
 if __name__ == "__main__":

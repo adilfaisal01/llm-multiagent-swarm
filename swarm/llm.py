@@ -1,9 +1,13 @@
-"""Shared Ollama chat helper — retry/backoff, streaming, and cost accounting.
+"""Shared LLM chat helper — retry/backoff, streaming, and cost accounting.
 
-Centralizes the repeated ``requests``-style chat calls that used to live in
-worker.py, synthesis.py, and preflight.py. Behavior is identical to the old
-call sites when no retry is triggered and streaming is off, so this is a
-drop-in replacement.
+Centralizes the repeated chat calls that used to live in worker.py,
+synthesis.py, and preflight.py. Speaks the OpenAI-compatible
+``/v1/chat/completions`` protocol, which covers OpenAI, Anthropic (compat
+layer), Ollama (``/v1``), Groq, Together, DeepSeek, OpenRouter, vLLM, etc.
+
+When the optional ``litellm`` package is installed (``pip install -e
+".[providers]"``), calls route through it for native provider support and
+normalized tool calls; otherwise a stdlib urllib implementation is used.
 
 Usage:
     from swarm.llm import call_llm, RunCost
@@ -21,16 +25,22 @@ import random
 import time
 import urllib.error
 import urllib.request
+import warnings
 from dataclasses import dataclass, field
+
+from .providers import resolve_endpoint, should_use_litellm
+
+SAFETY_CAP = 32768
 
 
 @dataclass
 class RunCost:
     """Accumulated token + wall-time accounting for a run.
 
-    All fields default to 0 so missing Ollama response fields never raise.
+    All fields default to 0 so missing response fields never raise.
     ``estimated_cost_usd`` is only nonzero when the caller supplies model
-    cost rates (config ``model_costs``); otherwise it stays 0.
+    cost rates (config ``model_costs``) or the LiteLLM path computes it;
+    otherwise it stays 0.
     """
 
     prompt_tokens: int = 0
@@ -82,6 +92,14 @@ def _should_retry(exc: Exception) -> bool:
         return exc.code >= 500 or exc.code == 429
     if isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)):
         return True
+    # LiteLLM raises its own exception types; treat rate-limit / connection /
+    # timeout as transient.
+    try:
+        from litellm.exceptions import APIConnectionError, RateLimitError, Timeout
+        if isinstance(exc, (RateLimitError, APIConnectionError, Timeout)):
+            return True
+    except ImportError:
+        pass
     return False
 
 
@@ -107,10 +125,11 @@ def call_llm(
     model: str,
     messages: list,
     *,
-    ollama_base: str = "http://localhost:11434",
+    config: dict | None = None,
+    ollama_base: str | None = None,
     stream: bool = False,
     temperature: float = 0.3,
-    max_tokens: int = 4096,
+    max_tokens: int | None = None,
     tools: list | None = None,
     timeout: int = 120,
     purpose: str = "chat",
@@ -120,46 +139,99 @@ def call_llm(
     stream_cb=None,
     return_message: bool = False,
 ) -> str | dict:
-    """Call the Ollama chat API with retry/backoff and optional streaming.
+    """Call an OpenAI-compatible chat API with retry/backoff and streaming.
 
     Args:
-        model: Full Ollama model tag (e.g. ``deepseek-v4-flash:cloud``).
+        model: Model tag, ``provider/name`` (e.g. ``openai/gpt-4o``) or a
+            bare tag (e.g. ``deepseek-v4-flash:cloud`` → ollama provider).
         messages: Chat messages list (system/user/assistant/tool).
+        config: Loaded swarm config dict. May contain a ``providers`` block
+            (``{base_url, api_key_env}`` per provider) and ``use_litellm``.
+        ollama_base: Deprecated. If set, overrides the resolved endpoint
+            with an ollama-style base URL (``/v1`` appended).
         stream: If True, yield chunks via ``stream_cb`` and return the
             accumulated text. If False, return the full text.
         stream_cb: Optional ``callable(chunk: str, phase: str)`` invoked for
             each streamed chunk. ``phase`` is the ``purpose`` value.
         cost: Optional RunCost accumulator. Populated with token usage.
         model_rates: Optional {input_per_1k, output_per_1k} for cost estimation.
+        max_tokens: Upper bound on output tokens. ``None`` applies a 32768-token
+            safety cap, letting the model use its natural default without
+            unbounded output; an explicit value overrides the cap.
         retry_cfg: Optional {max_attempts, base_delay, max_delay}.
-        return_message: If True, return the full Ollama ``message`` dict
-            (including ``tool_calls``) instead of just the text content.
-            On failure still returns the ``[LLM error: ...]`` string.
+        return_message: If True, return the full message dict (including
+            ``tool_calls``) instead of just the text content. On failure
+            still returns the ``[LLM error: ...]`` string.
 
     Returns:
         The model's text content (empty string on unrecoverable failure),
         or the full message dict when ``return_message`` is True.
     """
+    base_url, api_model, headers, api_key = resolve_endpoint(model, config or {})
+
+    if ollama_base is not None:
+        warnings.warn(
+            "ollama_base is deprecated; use config={'providers': {...}}",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        base_url = ollama_base.rstrip("/") + "/v1"
+
+    if should_use_litellm(config, model):
+        return _call_via_litellm(
+            api_model, messages, base_url=base_url, api_key=api_key,
+            headers=headers, stream=stream, temperature=temperature,
+            max_tokens=max_tokens, tools=tools, timeout=timeout,
+            purpose=purpose, retry_cfg=retry_cfg, cost=cost,
+            model_rates=model_rates, stream_cb=stream_cb,
+            return_message=return_message,
+        )
+    return _call_native(
+        api_model, messages, base_url=base_url, headers=headers,
+        stream=stream, temperature=temperature, max_tokens=max_tokens,
+        tools=tools, timeout=timeout, purpose=purpose, retry_cfg=retry_cfg,
+        cost=cost, model_rates=model_rates, stream_cb=stream_cb,
+        return_message=return_message,
+    )
+
+
+def _call_native(
+    model: str,
+    messages: list,
+    *,
+    base_url: str,
+    headers: dict,
+    stream: bool,
+    temperature: float,
+    max_tokens: int | None,
+    tools: list | None,
+    timeout: int,
+    purpose: str,
+    retry_cfg: dict | None,
+    cost: RunCost | None,
+    model_rates: dict | None,
+    stream_cb,
+    return_message: bool,
+) -> str | dict:
+    """OpenAI-compatible chat via stdlib urllib (no external deps)."""
     policy = _retry_policy(retry_cfg)
     payload = {
         "model": model,
         "messages": messages,
         "stream": stream,
-        "options": {"temperature": temperature, "num_predict": max_tokens},
+        "temperature": temperature,
+        "max_tokens": SAFETY_CAP if max_tokens is None else max_tokens,
     }
     if tools:
         payload["tools"] = tools
 
     data = json.dumps(payload).encode()
+    url = f"{base_url.rstrip('/')}/chat/completions"
     last_exc: Exception | None = None
     start = time.time()
 
     for attempt in range(1, policy["max_attempts"] + 1):
-        req = urllib.request.Request(
-            f"{ollama_base}/api/chat",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
+        req = urllib.request.Request(url, data=data, headers=headers)
         start = time.time()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -168,12 +240,13 @@ def call_llm(
                 else:
                     result = json.loads(resp.read())
                     if return_message:
-                        return result.get("message", {})
-                    text = result.get("message", {}).get("content", "") or ""
+                        return result["choices"][0]["message"]
+                    text = result["choices"][0]["message"].get("content", "") or ""
                     if cost is not None:
+                        usage = result.get("usage", {})
                         cost.add(
-                            prompt=result.get("prompt_eval_count", 0),
-                            completion=result.get("eval_count", 0),
+                            prompt=usage.get("prompt_tokens", 0),
+                            completion=usage.get("completion_tokens", 0),
                             seconds=time.time() - start,
                             rates=model_rates,
                         )
@@ -192,18 +265,47 @@ def call_llm(
 
 
 def _read_stream(resp, stream_cb, purpose: str) -> str:
-    """Consume an Ollama NDJSON streaming response, forwarding chunks."""
+    """Consume an OpenAI SSE streaming response, forwarding chunks."""
     chunks = []
     for line in resp:
-        if not line:
+        line = line.strip()
+        if not line or not line.startswith(b"data:"):
             continue
+        data = line[5:].strip()
+        if data == b"[DONE]":
+            break
         try:
-            obj = json.loads(line)
+            obj = json.loads(data)
         except json.JSONDecodeError:
             continue
-        piece = obj.get("message", {}).get("content", "")
-        if piece:
-            chunks.append(piece)
+        delta = obj.get("choices", [{}])[0].get("delta", {}).get("content", "")
+        if delta:
+            chunks.append(delta)
             if stream_cb:
-                stream_cb(piece, purpose)
+                stream_cb(delta, purpose)
     return "".join(chunks)
+
+
+def _call_via_litellm(
+    model: str,
+    messages: list,
+    *,
+    base_url: str,
+    api_key: str | None,
+    headers: dict,
+    stream: bool,
+    temperature: float,
+    max_tokens: int | None,
+    tools: list | None,
+    timeout: int,
+    purpose: str,
+    retry_cfg: dict | None,
+    cost: RunCost | None,
+    model_rates: dict | None,
+    stream_cb,
+    return_message: bool,
+) -> str | dict:
+    """LiteLLM transport — implemented in a later commit."""
+    raise RuntimeError(
+        "litellm transport not yet implemented; install with: pip install -e .[providers]"
+    )
