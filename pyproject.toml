@@ -42,6 +42,9 @@ mcp = [
 pdf = [
     "pypdf>=4.0",
 ]
+providers = [
+    "litellm>=1.50,<2.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -305,7 +305,82 @@ def _call_via_litellm(
     stream_cb,
     return_message: bool,
 ) -> str | dict:
-    """LiteLLM transport — implemented in a later commit."""
-    raise RuntimeError(
-        "litellm transport not yet implemented; install with: pip install -e .[providers]"
-    )
+    """LiteLLM transport — delegates to ``litellm.completion``.
+
+    LiteLLM normalizes provider differences (auth, streaming, tool calls,
+    vision content) behind one call. ``api_base``/``api_key`` are passed
+    explicitly so behavior matches the native path regardless of env.
+    """
+    try:
+        import litellm
+    except ImportError:
+        raise RuntimeError(
+            "litellm not installed; install with: pip install -e .[providers]"
+        )
+
+    policy = _retry_policy(retry_cfg)
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "api_base": base_url,
+        "api_key": api_key,
+        "stream": stream,
+        "temperature": temperature,
+        "max_tokens": SAFETY_CAP if max_tokens is None else max_tokens,
+        "timeout": timeout,
+        "num_retries": 0,  # our own retry policy below
+    }
+    if tools:
+        kwargs["tools"] = tools
+
+    last_exc: Exception | None = None
+    start = time.time()
+
+    for attempt in range(1, policy["max_attempts"] + 1):
+        start = time.time()
+        try:
+            response = litellm.completion(**kwargs)
+            if stream:
+                text = ""
+                for chunk in response:
+                    delta = chunk.choices[0].delta.content or ""
+                    if delta:
+                        text += delta
+                        if stream_cb:
+                            stream_cb(delta, purpose)
+                return text
+
+            if return_message:
+                msg = response.choices[0].message.model_dump()
+            else:
+                msg = None
+                text = response.choices[0].message.content or ""
+
+            if cost is not None:
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    cost.add(
+                        prompt=getattr(usage, "prompt_tokens", 0) or 0,
+                        completion=getattr(usage, "completion_tokens", 0) or 0,
+                        seconds=time.time() - start,
+                        rates=model_rates,
+                    )
+                try:
+                    cost.estimated_cost_usd += float(
+                        litellm.completion_cost(completion_response=response)
+                    )
+                except Exception:
+                    pass  # pricing table may not cover this model
+
+            return msg if return_message else text
+        except Exception as e:
+            last_exc = e
+            if not _should_retry(e):
+                break
+            if attempt < policy["max_attempts"]:
+                delay = _backoff_delay(attempt, policy, _retry_after_seconds(e))
+                time.sleep(delay)
+
+    if cost is not None:
+        cost.add(seconds=time.time() - start, rates=model_rates)
+    return f"[LLM error: {last_exc}]" if last_exc else ""
