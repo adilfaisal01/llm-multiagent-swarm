@@ -371,6 +371,7 @@ The mode changes:
 - **Scratchpad race conditions**: `isolation_level=None` on the SQLite connection prevents "cannot commit - no transaction is active" errors with concurrent workers
 - **Result cache concurrency**: the `Cache` in `swarm/cache.py` guards all SQLite access with a `threading.Lock` — do not remove it, concurrent workers will corrupt the connection
 - **Persistent TUI dependency**: `textual>=0.70.0` is declared in `pyproject.toml`; install with `pip install -e .` or just `pip install textual`
+- **Docs live in `docs/`**: the README is a tight summary + pointers. Detailed docs (architecture, scratchpad, configuration, models, TUI, demo, complexity, testing, tools, skills, MCP, releases, benchmarks) live as individual files under `docs/` — update those, not the README, when documenting features. There is no root `SCRATCHPAD.md` anymore (moved to `docs/SCRATCHPAD.md`)
 - **MCP dependency**: the `mcp` SDK is an optional extra (`pip install -e ".[mcp]"`). `swarm/integrations/mcp/` raises a clear `ImportError` if it's missing — the library core stays stdlib-only
 - **LiteLLM dependency**: `litellm` is an optional extra (`pip install -e ".[providers]"`, pinned `>=1.50,<2.0`). Without it, `call_llm` uses the stdlib OpenAI-compat path — the core stays stdlib-only
 - **TUI output**: Markdown auto-saved to `swarm_outputs/` on every run; live sources shown in side panel
