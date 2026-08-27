@@ -1,4 +1,5 @@
 {
+  "use_litellm": false,
   "providers": {
     "ollama": {
       "base_url": "http://localhost:11434/v1"
