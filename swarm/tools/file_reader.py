@@ -21,7 +21,7 @@ class ReadFile(BaseTool):
         "Read a file from disk and return its contents as text. "
         "Supports: .txt, .csv, .json, .xml, .jsonld, .py, .md, .docx (text extract). "
         "Use this when the question refers to an attached file, spreadsheet, "
-        "or data file."
+        "or data file. For long documents, set max_chars to 50000 or higher."
     )
     parameters = {
         "type": "object",
@@ -32,7 +32,7 @@ class ReadFile(BaseTool):
             },
             "max_chars": {
                 "type": "number",
-                "description": "Maximum characters to return (default: 5000)",
+                "description": "Maximum characters to return (default: 50000)",
             },
         },
         "required": ["path"],
@@ -51,7 +51,7 @@ class ReadFile(BaseTool):
             ``Error:`` / ``[ReadFile error:`` on failure.
         """
         path = args.get("path", "")
-        max_chars = int(args.get("max_chars", 5000))
+        max_chars = int(args.get("max_chars", 50000))
 
         if not path:
             return "Error: no path provided"
