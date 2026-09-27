@@ -41,14 +41,14 @@ def get_defaults(config: dict = None) -> dict:
         config = {}
 
     worker_models = config.get("models", {}) or {
-        "ministral": "ministral-3:14b-cloud",
+        "ministral": "ministral-3:3b",
         "nemotron": "nemotron-3-nano:30b-cloud",
         "nemotron-super": "nemotron-3-super:cloud",
         "gpt-oss": "gpt-oss:120b-cloud",
         "gemma": "gemma4:31b-cloud",
-        "qwen": "qwen3.5:397b-cloud",
-        "deepseek": "deepseek-v4-flash:cloud",
-        "flash": "deepseek-v4-flash:cloud",
+        "qwen": "qwen3.5:4b",
+        "deepseek": "deepseek-v4-pro:cloud",
+        "flash": "deepseek-v4.1-flash:cloud",
     }
 
     default_worker = worker_models.get(
@@ -70,8 +70,8 @@ def get_defaults(config: dict = None) -> dict:
         team = [
             {"name": "Vera",  "model": worker_models.get("gpt-oss", "gpt-oss:120b-cloud"),  "prompt": "", "angle": "Cover ORIGINS and HISTORY. Timeline, background, how it started."},
             {"name": "Cyrus", "model": worker_models.get("nemotron", "nemotron-3-nano:30b-cloud"), "prompt": "", "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake."},
-            {"name": "Romy",  "model": worker_models.get("qwen", "qwen3.5:397b-cloud"),      "prompt": "", "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
-            {"name": "Ash",   "model": worker_models.get("deepseek", "deepseek-v4-flash:cloud"), "prompt": "", "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
+            {"name": "Romy",  "model": worker_models.get("gemma", "gemma4:31b-cloud"),      "prompt": "", "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading."},
+            {"name": "Ash",   "model": worker_models.get("deepseek", "deepseek-v4-pro:cloud"), "prompt": "", "angle": "Cover CONTROVERSIES and CRITICISMS. What opponents and skeptics say."},
             {"name": "Zara",  "model": worker_models.get("gpt-oss", "gpt-oss:120b-cloud"),  "prompt": "", "angle": "Cover TECHNICAL DETAILS. How it actually works under the hood."},
         ]
 

@@ -6,18 +6,21 @@
     }
   },
   "models": {
-    "ministral": "ministral-3:14b-cloud",
+    "ministral": "ministral-3:3b",
     "nemotron": "nemotron-3-super:cloud",
     "nemotron-super": "nemotron-3-super:cloud",
     "gpt-oss": "gpt-oss:120b-cloud",
     "glm-5.3-flash": "glm-5.3-flash:cloud",
     "gemma": "gemma4:31b-cloud",
     "gemma-vision": "gemma4:31b-cloud",
-    "qwen": "qwen3.5:397b-cloud",
+    "qwen": "qwen3.5:4b",
     "deepseek": "deepseek-v4-pro:cloud",
-    "flash": "deepseek-v4-flash:cloud",
+    "flash": "deepseek-v4.1-flash:cloud",
     "kimi": "kimi-k2.6:cloud",
-    "minimax": "minimax-m3:cloud"
+    "minimax": "minimax-m3:cloud",
+    "deepseek-v4.1": "deepseek-v4.1-flash:cloud",
+    "glm-5.2": "glm-5.2:cloud",
+    "kimi-k3": "kimi-k3:cloud"
   },
   "default_model": "gpt-oss",
   "team": [
@@ -35,7 +38,7 @@
     },
     {
       "name": "Romy",
-      "model": "qwen",
+      "model": "gemma",
       "angle": "Cover IMPLICATIONS and FUTURE. Second-order effects, where this is heading.",
       "prompt": "You are Romy, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
     },
@@ -61,6 +64,6 @@
   ],
   "fallback_models": [
     "gpt-oss:120b-cloud",
-    "nemotron-3-nano:30b-cloud"
+    "gemma4:31b-cloud"
   ]
 }
