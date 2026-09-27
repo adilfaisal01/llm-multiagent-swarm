@@ -43,3 +43,4 @@ swarm_sessions.db
 
 # local codebase index (built by git hook, not committed)
 .codebase/
+*.bak.2026*
