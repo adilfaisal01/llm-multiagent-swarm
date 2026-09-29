@@ -54,6 +54,25 @@ def _inject_file_prompt(prompt: str, tool_bundle: str, file_path: str | None) ->
     return prompt
 
 
+DEGENERATE_MIN_CHARS = 500
+
+
+def _worker_status(r: dict) -> str:
+    """Classify a worker result.
+
+    A worker can return status='ok' while having produced NO report — it burned
+    its turns on tool calls and emitted only a preamble ("Let me check…"). That
+    is silent data loss, not success: the run header still claims N workers and
+    synthesis still reports "no worker contradicted another", which is vacuous
+    when a worker said nothing. Flag it explicitly.
+    """
+    if r.get("status") != "ok":
+        return "ERR"
+    if len(r.get("response", "").strip()) < DEGENERATE_MIN_CHARS:
+        return "DEGENERATE"
+    return "OK"
+
+
 def _run_workers_parallel(workers, goal, config, fallback_models, out, progress=None,
                           retry_cfg=None, cost=None, model_rates=None):
     """Run workers in parallel, capping concurrency at 5.
@@ -77,10 +96,14 @@ def _run_workers_parallel(workers, goal, config, fallback_models, out, progress=
         for f in as_completed(futures):
             r = f.result()
             results.append(r)
-            ok = "OK" if r["status"] == "ok" else "ERR"
+            ok = _worker_status(r)
             print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
                   f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
                   f"{len(r['response'])} chars", file=out)
+            if ok == "DEGENERATE":
+                print(f"        ⚠️  {r['name']} returned no report "
+                      f"(<{DEGENERATE_MIN_CHARS} chars) — it is counted as a worker "
+                      f"but contributed nothing to synthesis.", file=out)
             if progress:
                 progress("worker_done", r)
     results.sort(key=lambda x: x["worker_id"])
@@ -124,10 +147,14 @@ def _run_workers_pipeline(workers, depends_on, goal, config, fallback_models, ou
                 results.append(r)
                 completed[i] = r
                 remaining.remove(i)
-                ok = "OK" if r["status"] == "ok" else "ERR"
+                ok = _worker_status(r)
                 print(f"   [{ok}] {r['name']} ({r['model'].split(':')[0]}) — "
                       f"{r['duration_s']}s — bundle: {r.get('tool_bundle', 'default')} — "
                       f"{len(r['response'])} chars", file=out)
+                if ok == "DEGENERATE":
+                    print(f"        ⚠️  {r['name']} returned no report "
+                          f"(<{DEGENERATE_MIN_CHARS} chars) — it is counted as a "
+                          f"worker but contributed nothing to synthesis.", file=out)
                 if progress:
                     progress("worker_done", r)
 
@@ -288,7 +315,21 @@ def orchestrate(goal: str, num_workers: int = 5, model: str | None = None,
     for src in top_sources:
         src["findings"] = [f[2] for f in sp.findings_for_source(src["url"])]
 
-    # AI-based probabilistic credibility: an LLM judge refines the heuristic
+    # ─── Honest worker accounting ───
+    # "Workers: 5" is a claim about how many were SPAWNED, not how many reported.
+    # A degenerate worker (<500 chars) contributed nothing to synthesis, so the
+    # contributed count is what the report should lead with.
+    degenerate = [r for r in results if _worker_status(r) == "DEGENERATE"]
+    errored = [r for r in results if r.get("status") != "ok"]
+    reportable = len(results) - len(degenerate) - len(errored)
+    print(f"  Workers: {num_workers} spawned | {reportable} reported | "
+          f"{len(degenerate)} degenerate | {len(errored)} errored", file=out)
+    if degenerate:
+        print(f"  ⚠️  {len(degenerate)} worker(s) returned no report: "
+              f"{', '.join(r['name'] for r in degenerate)} — synthesis ran on "
+              f"{reportable} of {num_workers} sources of evidence.", file=out)
+
+    # ─── AI-based probabilistic credibility: an LLM judge refines the heuristic
     # prior into a Bayesian posterior. Falls back to the prior on failure.
     credibility_meta = {}
     if ai_credibility and top_sources:
