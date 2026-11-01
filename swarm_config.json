@@ -17,6 +17,7 @@
     "deepseek": "deepseek-v4-pro:cloud",
     "flash": "deepseek-v4.1-flash:cloud",
     "kimi": "kimi-k2.6:cloud",
+    "mimo": "mimo-v2.6-pro:cloud",
     "minimax": "minimax-m3:cloud",
     "deepseek-v4.1": "deepseek-v4.1-flash:cloud",
     "glm-5.2": "glm-5.2:cloud",
@@ -32,7 +33,7 @@
     },
     {
       "name": "Cyrus",
-      "model": "kimi",
+      "model": "mimo",
       "angle": "Cover KEY PLAYERS and MONEY. Who is involved, who benefits, amounts at stake.",
       "prompt": "You are Cyrus, a focused research agent.\n\nMAIN QUESTION: {goal}\n\nYOUR ANGLE: {angle}\n\nYou have web_search and web_extract tools. Search for current info, then write your report. Be factual with names, dates, numbers."
     },
