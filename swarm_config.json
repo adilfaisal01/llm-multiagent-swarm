@@ -23,7 +23,7 @@
     "glm-5.2": "glm-5.2:cloud",
     "kimi-k3": "kimi-k3:cloud"
   },
-  "default_model": "gpt-oss",
+  "default_model": "gemma",
   "team": [
     {
       "name": "Vera",
@@ -64,7 +64,7 @@
     "Cover TECHNICAL DETAILS. How it actually works under the hood."
   ],
   "fallback_models": [
-    "gpt-oss:120b-cloud",
+    "deepseek-v4.1-flash:cloud",
     "gemma4:31b-cloud"
   ]
 }

@@ -30,7 +30,54 @@ from dataclasses import dataclass, field
 
 from .providers import resolve_endpoint, should_use_litellm
 
-SAFETY_CAP = 32768
+# Raised 32768 -> 131072 (Oct 31 2026). A bigger cap lets long reports and
+# reasoning-heavy answers finish instead of being cut at 32k.
+SAFETY_CAP = 131072
+
+# Per-model output ceilings, measured by probing each tag with /v1 at
+# 131072 then 262144 and reading the API's own rejection message.
+# A cap ABOVE a model's ceiling is not a soft failure: the request returns
+# HTTP 400 and the call produces NOTHING. deepseek-v4-pro is both Ash's model
+# and the synthesis model, so a flat 131072 broke every run outright.
+MODEL_MAX_OUTPUT = {
+    "deepseek-v4-pro:cloud": 65536,
+    "nemotron-3-super:cloud": 65536,
+    "mimo-v2.6-pro:cloud": 131072,
+    "mimo-v2.6-flash:cloud": 131072,
+    "glm-5.2:cloud": 131072,
+    "minimax-m3:cloud": 131072,
+    "gpt-oss:120b-cloud": 131072,
+    # Verified to accept 262144 without complaint: gemma4:31b-cloud,
+    # deepseek-v4.1-flash:cloud, glm-5.3-flash:cloud, kimi-k2.6:cloud,
+    # kimi-k3:cloud -> they simply inherit SAFETY_CAP.
+}
+# Models not in the table get SAFETY_CAP. If one still rejects it, the 400
+# self-heal below clamps to whatever ceiling the API reports and retries.
+DEFAULT_MAX_OUTPUT = SAFETY_CAP
+
+
+def clamp_max_tokens(model: str, max_tokens: int | None) -> int:
+    """Clamp a requested output budget to the model's real ceiling.
+
+    An over-large max_tokens is a hard HTTP 400 on Ollama cloud, so this runs
+    on EVERY call rather than trusting the caller (or the config) to be sane.
+    """
+    requested = DEFAULT_MAX_OUTPUT if max_tokens is None else int(max_tokens)
+    ceiling = MODEL_MAX_OUTPUT.get(model, DEFAULT_MAX_OUTPUT)
+    return min(requested, ceiling)
+
+
+def _learned_ceiling(msg: str):
+    """Extract the ceiling from a 400 like 'exceeds ... maximum output tokens (65536)'."""
+    import re as _re
+    m = _re.search(r"maximum output tokens \((\d+)\)", msg or "")
+    return int(m.group(1)) if m else None
+
+
+def _record_ceiling(model: str, ceiling: int) -> None:
+    """Cache a discovered ceiling so later calls clamp before asking."""
+    if ceiling and model not in MODEL_MAX_OUTPUT:
+        MODEL_MAX_OUTPUT[model] = ceiling
 
 
 @dataclass
@@ -220,7 +267,7 @@ def _call_native(
         "messages": messages,
         "stream": stream,
         "temperature": temperature,
-        "max_tokens": SAFETY_CAP if max_tokens is None else max_tokens,
+        "max_tokens": clamp_max_tokens(model, max_tokens),
     }
     if tools:
         payload["tools"] = tools
@@ -253,6 +300,22 @@ def _call_native(
                 return text
         except Exception as e:
             last_exc = e
+            # Self-heal: a max_tokens above the model's ceiling is a hard 400.
+            # Read the ceiling out of the message, cache it, clamp and retry,
+            # so a model missing from MODEL_MAX_OUTPUT needs no table update.
+            ceiling = None
+            if isinstance(e, urllib.error.HTTPError) and e.code == 400:
+                try:
+                    body = e.read().decode()
+                except Exception:
+                    body = ""
+                ceiling = _learned_ceiling(body)
+            if ceiling and payload.get("max_tokens", 0) > ceiling:
+                _record_ceiling(model, ceiling)
+                payload["max_tokens"] = ceiling
+                data = json.dumps(payload).encode()
+                if attempt < policy["max_attempts"]:
+                    continue
             if not _should_retry(e):
                 break
             if attempt < policy["max_attempts"]:
@@ -326,7 +389,7 @@ def _call_via_litellm(
         "api_key": api_key,
         "stream": stream,
         "temperature": temperature,
-        "max_tokens": SAFETY_CAP if max_tokens is None else max_tokens,
+        "max_tokens": clamp_max_tokens(model, max_tokens),
         "timeout": timeout,
         "num_retries": 0,  # our own retry policy below
     }

@@ -181,7 +181,11 @@ def run_worker(
                 ],
                 config=config,
                 temperature=0.3,
-                max_tokens=1024,
+                # 1024 capped the last-resort answer at ~750 words, which is
+                # thinner than the report it replaces. 8192 is generous for a
+                # fallback while still bounded (None would allow the full
+                # per-model ceiling on a path that runs after a failure).
+                max_tokens=8192,
                 timeout=60,
                 purpose="worker_fallback",
                 retry_cfg=retry_cfg,
